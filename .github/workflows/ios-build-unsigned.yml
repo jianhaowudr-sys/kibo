@@ -44,7 +44,7 @@ jobs:
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
           echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
 
-      - name: Build unsigned archive
+      - name: Build unsigned .app
         working-directory: ios
         run: |
           xcodebuild \
@@ -52,8 +52,8 @@ jobs:
             -scheme "${{ steps.detect.outputs.scheme }}" \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath $PWD/build/app.xcarchive \
-            archive \
+            -derivedDataPath $PWD/build \
+            build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY= \
@@ -63,8 +63,10 @@ jobs:
       - name: Package .app into fake .ipa (zip Payload)
         working-directory: ios
         run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "Found app: $APP_PATH"
           mkdir -p build/Payload
-          cp -r build/app.xcarchive/Products/Applications/*.app build/Payload/
+          cp -r "$APP_PATH" build/Payload/
           cd build && zip -qr kibo.ipa Payload && cd ..
           ls -lh build/kibo.ipa
 
