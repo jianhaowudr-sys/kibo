@@ -1,0 +1,65 @@
+name: Build unsigned iOS .ipa for SideStore
+
+on:
+  workflow_dispatch:    # manual trigger from GitHub UI
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+      - '*.md'
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run expo prebuild (generate ios/ folder)
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned archive
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -workspace kibo.xcworkspace \
+            -scheme kibo \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $PWD/build/kibo.xcarchive \
+            archive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY= \
+            EXPANDED_CODE_SIGN_IDENTITY= \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Package .app into fake .ipa (zip Payload)
+        working-directory: ios
+        run: |
+          mkdir -p build/Payload
+          cp -r build/kibo.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -qr kibo.ipa Payload && cd ..
+          ls -lh build/kibo.ipa
+
+      - name: Upload .ipa artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kibo-unsigned-ipa
+          path: ios/build/kibo.ipa
+          retention-days: 30

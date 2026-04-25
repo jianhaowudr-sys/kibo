@@ -32,6 +32,15 @@ yarn-error.*
 
 # local env files
 .env*.local
+.pgyer-keys.json
+
+# build artifacts
+*.apk
+*.aab
+*.ipa
+*.csv
+_connect.html
+kibo-backup_*.json
 
 # typescript
 *.tsbuildinfo
