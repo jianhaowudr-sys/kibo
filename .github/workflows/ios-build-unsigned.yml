@@ -33,15 +33,26 @@ jobs:
         working-directory: ios
         run: pod install
 
+      - name: Detect workspace and scheme
+        id: detect
+        working-directory: ios
+        run: |
+          WORKSPACE=$(ls -d *.xcworkspace | head -1)
+          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['workspace']['schemes'][0])")
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+          echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
+          echo "scheme=$SCHEME" >> $GITHUB_OUTPUT
+
       - name: Build unsigned archive
         working-directory: ios
         run: |
           xcodebuild \
-            -workspace kibo.xcworkspace \
-            -scheme kibo \
+            -workspace "${{ steps.detect.outputs.workspace }}" \
+            -scheme "${{ steps.detect.outputs.scheme }}" \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath $PWD/build/kibo.xcarchive \
+            -archivePath $PWD/build/app.xcarchive \
             archive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -53,7 +64,7 @@ jobs:
         working-directory: ios
         run: |
           mkdir -p build/Payload
-          cp -r build/kibo.xcarchive/Products/Applications/*.app build/Payload/
+          cp -r build/app.xcarchive/Products/Applications/*.app build/Payload/
           cd build && zip -qr kibo.ipa Payload && cd ..
           ls -lh build/kibo.ipa
 
