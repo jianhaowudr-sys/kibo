@@ -38,7 +38,11 @@ jobs:
         working-directory: ios
         run: |
           WORKSPACE=$(ls -d *.xcworkspace | head -1)
-          SCHEME=$(xcodebuild -workspace "$WORKSPACE" -list -json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['workspace']['schemes'][0])")
+          export WS_NAME=$(basename "$WORKSPACE" .xcworkspace)
+          SCHEMES=$(xcodebuild -workspace "$WORKSPACE" -list -json)
+          echo "Available schemes:"
+          echo "$SCHEMES" | python3 -c "import sys,json; d=json.load(sys.stdin); print('\n'.join(d['workspace']['schemes']))"
+          SCHEME=$(echo "$SCHEMES" | python3 -c "import sys,json,os; d=json.load(sys.stdin); s=d['workspace']['schemes']; ws=os.environ['WS_NAME']; m=[x for x in s if x.lower()==ws.lower()]; print(m[0] if m else s[0])")
           echo "Workspace: $WORKSPACE"
           echo "Scheme: $SCHEME"
           echo "workspace=$WORKSPACE" >> $GITHUB_OUTPUT
