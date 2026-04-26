@@ -34,6 +34,11 @@ yarn-error.*
 .env*.local
 .pgyer-keys.json
 
+# build / dev logs
+*.log
+build-*.log
+dev-server.log
+
 # build artifacts
 *.apk
 *.aab

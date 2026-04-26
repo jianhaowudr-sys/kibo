@@ -11,6 +11,13 @@ import { eggProgress, EGG_STAGE_LABEL, eggStage, eggConfigFor } from '@/lib/pets
 import { levelFromExp } from '@/lib/exp';
 import * as haptic from '@/lib/haptic';
 import * as repo from '@/db/repo';
+import { SWIPE_OVERSHOOT, SWIPE_RIGHT_THRESHOLD } from '@/lib/gestures';
+import { HealthRow } from '@/components/health/HealthRow';
+import { SleepEditModal } from '@/components/health/SleepEditModal';
+import { HelpIcon } from '@/components/common/TutorialTip';
+import { DailyTrinityCard } from '@/components/dashboard/DailyTrinityCard';
+import { PetMessageCard } from '@/components/dashboard/PetMessageCard';
+import { parseLayout } from '@/lib/dashboard';
 import type { Workout, EggType } from '@/db/schema';
 
 export default function HomeScreen() {
@@ -89,6 +96,46 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  // 起床 prompt 觸發
+  const sleepLast = useAppStore((s) => s.sleepLast);
+  const settings = useAppStore((s) => s.healthSettings);
+  const [wakePromptOpen, setWakePromptOpen] = useState(false);
+
+  // dashboard layout
+  const layoutJson = useAppStore((s) => s.dashboardLayoutJson);
+  const layout = useMemo(() => parseLayout(layoutJson), [layoutJson]);
+  const isCardVisible = (id: string) => {
+    const c = layout.cards.find((x) => x.id === id);
+    return !!c?.visible;
+  };
+  const cardOrder = (id: string) => layout.cards.find((x) => x.id === id)?.order ?? 999;
+  // 「健康列」整組順序 = health-* 中最低的 order
+  const healthOrder = Math.min(
+    ...['health-water', 'health-bowel', 'health-sleep', 'health-period']
+      .filter(isCardVisible)
+      .map(cardOrder),
+    999,
+  );
+  const anyHealthVisible = ['health-water', 'health-bowel', 'health-sleep', 'health-period'].some(isCardVisible);
+
+  useEffect(() => {
+    if (!settings.sleep.wakePrompt.enabled) return;
+    const now = new Date();
+    if (now.getHours() < settings.sleep.wakePrompt.afterHour) return;
+    // 檢查昨晚是否已記錄
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const dayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    if (sleepLast?.dayKey === dayKey) return;
+    // 也檢查今早起床（早起記錄會 dayKey 是今天）
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (sleepLast?.dayKey === todayKey) return;
+    // 啟動 prompt（一天只跳一次：用 sessionStorage in-memory flag）
+    if ((global as any).__kiboSleepPromptShown !== todayKey) {
+      (global as any).__kiboSleepPromptShown = todayKey;
+      setTimeout(() => setWakePromptOpen(true), 800);
+    }
+  }, [settings.sleep.wakePrompt.enabled, settings.sleep.wakePrompt.afterHour, sleepLast]);
+
   return (
     <SafeAreaView className="flex-1 bg-kibo-bg" edges={['top']}>
       <ScrollView
@@ -107,7 +154,7 @@ export default function HomeScreen() {
             <Pressable
               onPress={() => {
                 haptic.tapLight();
-                router.push('/me' as any);
+                router.push('/pet' as any);
               }}
               className="items-center"
             >
@@ -119,18 +166,44 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <MonthCalendar
-          month={month}
-          onChangeMonth={setMonth}
-          workoutDates={dateSet}
-          selectedDate={selectedDate}
-          onSelect={setSelectedDate}
-        />
+        {/* dashboard 控制列（永遠在最頂） */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 8 }}>
+          <Pressable onPress={() => router.push('/dashboard/customize' as any)} hitSlop={8}>
+            <Text style={{ fontSize: 18 }}>⚙️</Text>
+          </Pressable>
+          <HelpIcon scope="home" />
+        </View>
 
+        {/* Daily Trinity（依 layout） */}
+        {isCardVisible('streak-trinity') && <DailyTrinityCard />}
+
+        {/* 寵物訊息（依 layout） */}
+        {isCardVisible('pet-message') && <PetMessageCard />}
+
+        {/* 月曆 */}
+        {isCardVisible('calendar') && (
+          <MonthCalendar
+            month={month}
+            onChangeMonth={setMonth}
+            workoutDates={dateSet}
+            selectedDate={selectedDate}
+            onSelect={setSelectedDate}
+          />
+        )}
+
+        {/* Today 健康列 */}
+        {anyHealthVisible && (
+          <View style={{ marginTop: 16, marginBottom: 8 }}>
+            <Text className="text-kibo-text text-base font-bold mb-2">今日健康</Text>
+            <HealthRow />
+          </View>
+        )}
+
+        {isCardVisible('today-workouts') && (
         <View className="mt-4">
           <View className="flex-row items-center justify-between mb-2">
             <Text className="text-kibo-text text-base font-bold">
-              {isToday ? '今天' : format(selectedDate, 'M 月 d 日')}
+              {isToday ? '今天訓練' : format(selectedDate, 'M 月 d 日')}
             </Text>
             {dayWorkouts.length > 0 && (
               <Text className="text-kibo-mute text-xs">{dayWorkouts.length} 次訓練</Text>
@@ -157,8 +230,8 @@ export default function HomeScreen() {
               ref={(ref) => {
                 swipeRefs.current.set(w.id, ref);
               }}
-              overshootRight={false}
-              rightThreshold={60}
+              overshootRight={SWIPE_OVERSHOOT}
+              rightThreshold={SWIPE_RIGHT_THRESHOLD}
               renderRightActions={() => (
                 <Pressable
                   onPressIn={() => haptic.tapMedium()}
@@ -203,7 +276,14 @@ export default function HomeScreen() {
             </Pressable>
           )}
         </View>
+        )}
       </ScrollView>
+
+      <SleepEditModal
+        visible={wakePromptOpen}
+        onClose={() => setWakePromptOpen(false)}
+        promptMode
+      />
     </SafeAreaView>
   );
 }

@@ -10,6 +10,7 @@ import { formatDuration } from '@/lib/date';
 import * as repo from '@/db/repo';
 import type { Exercise } from '@/db/schema';
 import * as haptic from '@/lib/haptic';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
 export default function ActiveWorkout() {
   const palette = useThemePalette();
@@ -252,7 +253,7 @@ export default function ActiveWorkout() {
     <View className="flex-1 bg-kibo-bg">
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         automaticallyAdjustKeyboardInsets

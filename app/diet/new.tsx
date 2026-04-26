@@ -9,6 +9,7 @@ import { readMealFromBase64, type MealReading } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import type { MealType, MealItem } from '@/db/schema';
 
 const MEAL_OPTIONS: { code: MealType; label: string; emoji: string }[] = [
@@ -175,7 +176,7 @@ export default function NewMeal() {
 
   return (
     <View className="flex-1 bg-kibo-bg">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}>
         <Text className="text-kibo-mute text-xs mb-2">餐別</Text>
         <View className="flex-row gap-2 mb-4">
           {MEAL_OPTIONS.map((m) => (

@@ -7,6 +7,7 @@ import { useThemePalette } from '@/lib/useThemePalette';
 import { BODY_PARTS, EQUIPMENTS } from '@/data/exercises_v2';
 import type { Exercise } from '@/db/schema';
 import * as haptic from '@/lib/haptic';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
 export default function ExerciseSelect() {
   const palette = useThemePalette();
@@ -144,7 +145,7 @@ export default function ExerciseSelect() {
         <Text className="text-kibo-primary font-semibold">＋ 新增自訂運動</Text>
       </Pressable>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 12, paddingBottom: 40 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 12, paddingBottom: BOTTOM_BAR_PADDING }}>
         {filtered.length === 0 && (
           <View className="py-12 items-center">
             <Text className="text-4xl mb-2">🔍</Text>

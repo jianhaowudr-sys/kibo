@@ -6,9 +6,21 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, ActivityIndicator, useColorScheme as useSystemColorScheme } from 'react-native';
+import { useFonts } from 'expo-font';
 import { ensureSchema } from '@/db/migrate';
 import { useAppStore } from '@/stores/useAppStore';
+import { useTutorialStore } from '@/stores/useTutorialStore';
 import { THEME_COLORS, type ThemeMode, type ResolvedTheme } from '@/lib/theme';
+import { PIXEL_COLORS, PIXEL_VARS } from '@/lib/palette';
+import { UndoToast } from '@/components/common/UndoToast';
+import { SurpriseBoxModal } from '@/components/dashboard/SurpriseBoxModal';
+import { setupNotificationActionHandler } from '@/lib/reminders';
+
+function SurpriseBoxBridge() {
+  const reward = useAppStore((s) => s.pendingReward);
+  const consume = useAppStore((s) => s.consumePendingReward);
+  return <SurpriseBoxModal visible={!!reward} reward={reward} onClose={consume} />;
+}
 
 function resolve(mode: ThemeMode, system: 'light' | 'dark' | null | undefined): ResolvedTheme {
   if (mode === 'system') return system === 'light' ? 'light' : 'dark';
@@ -20,12 +32,36 @@ export default function RootLayout() {
   const [err, setErr] = useState<string | null>(null);
   const bootstrap = useAppStore((s) => s.bootstrap);
   const loadThemeMode = useAppStore((s) => s.loadThemeMode);
+  const loadThemeStyle = useAppStore((s) => s.loadThemeStyle);
   const loadAuthSession = useAppStore((s) => s.loadAuthSession);
+  const hydrateTutorial = useTutorialStore((s) => s.hydrate);
   const themeMode = useAppStore((s) => s.themeMode);
+  const themeStyle = useAppStore((s) => s.themeStyle);
   const systemScheme = useSystemColorScheme();
 
+  const [fontsLoaded] = useFonts({
+    'Cubic11': require('../assets/fonts/Cubic_11.ttf'),
+    'PressStart2P': require('../assets/fonts/PressStart2P-Regular.ttf'),
+  });
+
   const theme: ResolvedTheme = resolve(themeMode, systemScheme);
-  const palette = THEME_COLORS[theme];
+  const palette = themeStyle === 'pixel' ? PIXEL_COLORS[theme] : THEME_COLORS[theme];
+  const pixelVarsStyle = themeStyle === 'pixel' ? PIXEL_VARS[theme] : undefined;
+
+  useEffect(() => {
+    const sub = setupNotificationActionHandler(async (action, data) => {
+      try {
+        if (data?.type === 'water' && action === 'add-cup') {
+          const { useAppStore } = await import('@/stores/useAppStore');
+          const cup = useAppStore.getState().healthSettings.water.favoriteCupMl;
+          await useAppStore.getState().addWater(cup, { batch: false });
+        }
+      } catch (e) {
+        console.warn('Notification action failed', e);
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -33,13 +69,26 @@ export default function RootLayout() {
         await ensureSchema();
         await bootstrap();
         await loadThemeMode();
+        await loadThemeStyle();
+        await hydrateTutorial();
         await loadAuthSession();
+        // 第一次啟動 → 進 onboarding
+        const { user } = useAppStore.getState();
+        if (user && !user.onboardingCompletedAt) {
+          // 延遲一點讓 Stack 準備好
+          setTimeout(() => {
+            try {
+              const { router } = require('expo-router');
+              router.replace('/onboarding');
+            } catch {}
+          }, 500);
+        }
         setReady(true);
       } catch (e: any) {
         setErr(e?.message ?? String(e));
       }
     })();
-  }, [bootstrap, loadThemeMode, loadAuthSession]);
+  }, [bootstrap, loadThemeMode, loadThemeStyle, loadAuthSession]);
 
   if (err) {
     return (
@@ -50,7 +99,7 @@ export default function RootLayout() {
     );
   }
 
-  if (!ready) {
+  if (!ready || !fontsLoaded) {
     return (
       <View className="flex-1 bg-kibo-bg items-center justify-center">
         <Text className="text-6xl mb-4">🥚</Text>
@@ -61,7 +110,7 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={[{ flex: 1 }, pixelVarsStyle]}>
       <SafeAreaProvider>
         <StatusBar style={palette.statusBar} />
         <Stack
@@ -85,7 +134,18 @@ export default function RootLayout() {
           <Stack.Screen name="diet/new" options={{ title: '記錄一餐', presentation: 'modal' }} />
           <Stack.Screen name="diet/[id]" options={{ title: '飲食詳情' }} />
           <Stack.Screen name="egg/hatch" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="health/water" options={{ title: '喝水紀錄' }} />
+          <Stack.Screen name="health/bowel" options={{ title: '排便紀錄' }} />
+          <Stack.Screen name="health/sleep" options={{ title: '睡眠紀錄' }} />
+          <Stack.Screen name="health/period" options={{ title: '經期紀錄' }} />
+          <Stack.Screen name="me/health-settings" options={{ title: '健康設定' }} />
+          <Stack.Screen name="dashboard/customize" options={{ title: '自訂首頁', presentation: 'modal' }} />
+          <Stack.Screen name="onboarding/index" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+          <Stack.Screen name="pet/index" options={{ headerShown: false }} />
+          <Stack.Screen name="pet/inventory" options={{ title: '圖鑑收藏' }} />
         </Stack>
+        <UndoToast />
+        <SurpriseBoxBridge />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

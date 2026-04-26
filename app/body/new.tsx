@@ -8,6 +8,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { readInBodyFromBase64, type InBodyReading } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import * as haptic from '@/lib/haptic';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
 type Form = {
   measuredAt: string;
@@ -185,7 +186,7 @@ export default function NewBodyMeasurement() {
 
   return (
     <View className="flex-1 bg-kibo-bg">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}>
         <Text className="text-kibo-mute text-xs mb-2">測量日期</Text>
         <TextInput
           value={form.measuredAt}

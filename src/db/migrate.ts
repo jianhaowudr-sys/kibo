@@ -149,6 +149,81 @@ CREATE TABLE IF NOT EXISTS achievements (
   description TEXT,
   unlocked_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS water_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  amount_ml INTEGER NOT NULL,
+  logged_at INTEGER NOT NULL,
+  batch_key TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS bowel_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  logged_at INTEGER NOT NULL,
+  bristol INTEGER NOT NULL DEFAULT 4,
+  has_blood INTEGER NOT NULL DEFAULT 0,
+  has_pain INTEGER NOT NULL DEFAULT 0,
+  notes TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sleep_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  bedtime_at INTEGER NOT NULL,
+  wake_at INTEGER NOT NULL,
+  duration_min INTEGER NOT NULL,
+  quality INTEGER NOT NULL DEFAULT 3,
+  day_key TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS period_days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  date INTEGER NOT NULL,
+  day_key TEXT NOT NULL,
+  flow TEXT NOT NULL DEFAULT 'medium',
+  symptoms_json TEXT,
+  notes TEXT,
+  is_cycle_start INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pet_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  pet_id INTEGER,
+  generated_at INTEGER NOT NULL,
+  category TEXT NOT NULL,
+  text TEXT NOT NULL,
+  read INTEGER NOT NULL DEFAULT 0,
+  trigger_data TEXT
+);
+
+CREATE TABLE IF NOT EXISTS pet_inventory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  item_id TEXT NOT NULL,
+  item_label TEXT NOT NULL,
+  rarity TEXT NOT NULL,
+  acquired_at INTEGER NOT NULL,
+  source TEXT
+);
+
+CREATE TABLE IF NOT EXISTS trinity_completions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  day_key TEXT NOT NULL,
+  reward_id TEXT,
+  reward_label TEXT,
+  reward_rarity TEXT,
+  consecutive_days INTEGER NOT NULL DEFAULT 1,
+  completed_at INTEGER NOT NULL
+);
 `;
 
 async function hasColumn(table: string, column: string): Promise<boolean> {
@@ -182,6 +257,19 @@ async function runAdditions(): Promise<void> {
   }
   if (!(await hasColumn('routines', 'last_saved_at'))) {
     await sqliteDb.runAsync('ALTER TABLE routines ADD COLUMN last_saved_at INTEGER');
+  }
+  // 健康模組相關的 users 欄位
+  if (!(await hasColumn('users', 'health_settings'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN health_settings TEXT');
+  }
+  if (!(await hasColumn('users', 'dashboard_layout'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN dashboard_layout TEXT');
+  }
+  if (!(await hasColumn('users', 'streak_freeze_tokens'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN streak_freeze_tokens INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!(await hasColumn('users', 'onboarding_completed_at'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN onboarding_completed_at INTEGER');
   }
 }
 

@@ -22,6 +22,10 @@ const rowToUser = (r: Row): User => ({
   totalWorkouts: r.total_workouts,
   totalExp: r.total_exp,
   createdAt: new Date(r.created_at),
+  healthSettings: r.health_settings ?? null,
+  dashboardLayout: r.dashboard_layout ?? null,
+  streakFreezeTokens: r.streak_freeze_tokens ?? 0,
+  onboardingCompletedAt: r.onboarding_completed_at ? new Date(r.onboarding_completed_at) : null,
 });
 
 const rowToRoutine = (r: Row): Routine => ({
@@ -365,6 +369,17 @@ export async function addExpToPet(petId: number, exp: number): Promise<void> {
     'UPDATE pets SET exp = exp + ? WHERE id = ?',
     [exp, petId],
   );
+  // 進化階段：每 1000 EXP 升一階，上限 stage 5
+  const r = await sqliteDb.getFirstAsync<{ exp: number; stage: number }>(
+    'SELECT exp, stage FROM pets WHERE id = ?',
+    [petId],
+  );
+  if (r) {
+    const target = Math.min(5, 1 + Math.floor(r.exp / 1000));
+    if (target > r.stage) {
+      await sqliteDb.runAsync('UPDATE pets SET stage = ? WHERE id = ?', [target, petId]);
+    }
+  }
 }
 
 export async function weeklyExpByDay(userId: number, dayKeys: string[]): Promise<Record<string, number>> {

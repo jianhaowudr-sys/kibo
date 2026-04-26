@@ -15,6 +15,14 @@ export const users = sqliteTable('users', {
   totalWorkouts: integer('total_workouts').notNull().default(0),
   totalExp: integer('total_exp').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  // 健康設定 JSON（plan v2 §4.1）
+  healthSettings: text('health_settings'),
+  // 首頁卡片佈局 JSON（plan v2 §3.3）
+  dashboardLayout: text('dashboard_layout'),
+  // streak 補課券（plan v2 §4.2 Hook 3）
+  streakFreezeTokens: integer('streak_freeze_tokens').notNull().default(0),
+  // onboarding 完成旗標
+  onboardingCompletedAt: integer('onboarding_completed_at', { mode: 'timestamp_ms' }),
 });
 
 export const routines = sqliteTable('routines', {
@@ -138,6 +146,89 @@ export const pets = sqliteTable('pets', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+// ===== 健康四模組（plan v2 §4.1）=====
+
+export const waterLogs = sqliteTable('water_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  amountMl: integer('amount_ml').notNull(),
+  loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
+  // 連點合併 batch key（同 batch 同時 undo）
+  batchKey: text('batch_key'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const bowelLogs = sqliteTable('bowel_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  loggedAt: integer('logged_at', { mode: 'timestamp_ms' }).notNull(),
+  bristol: integer('bristol').notNull().default(4),     // 1~7
+  hasBlood: integer('has_blood').notNull().default(0),  // 0/1
+  hasPain: integer('has_pain').notNull().default(0),    // 0/1
+  notes: text('notes'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const sleepLogs = sqliteTable('sleep_logs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  bedtimeAt: integer('bedtime_at', { mode: 'timestamp_ms' }).notNull(),
+  wakeAt: integer('wake_at', { mode: 'timestamp_ms' }).notNull(),
+  durationMin: integer('duration_min').notNull(),
+  quality: integer('quality').notNull().default(3),     // 1~5
+  // 起床日期 yyyy-mm-dd（同人同天 unique，重複 upsert）
+  dayKey: text('day_key').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+export const periodDays = sqliteTable('period_days', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  date: integer('date', { mode: 'timestamp_ms' }).notNull(),
+  // yyyy-mm-dd（同人同天 unique）
+  dayKey: text('day_key').notNull(),
+  flow: text('flow').notNull().default('medium'),       // 'spot'|'light'|'medium'|'heavy'
+  symptomsJson: text('symptoms_json'),                  // JSON array of strings
+  notes: text('notes'),
+  isCycleStart: integer('is_cycle_start').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+// 寵物 inventory（plan v2 §4.2 Hook 4）— 累積式收藏物
+export const petInventory = sqliteTable('pet_inventory', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  itemId: text('item_id').notNull(),       // REWARD_POOL.id
+  itemLabel: text('item_label').notNull(), // 顯示用
+  rarity: text('rarity').notNull(),        // common / rare / epic
+  acquiredAt: integer('acquired_at', { mode: 'timestamp_ms' }).notNull(),
+  source: text('source'),                  // trinity / streak / achievement
+});
+
+// Daily Trinity 完成紀錄（同天唯一，避免重複抽獎）
+export const trinityCompletions = sqliteTable('trinity_completions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  dayKey: text('day_key').notNull(),  // yyyy-mm-dd
+  rewardId: text('reward_id'),
+  rewardLabel: text('reward_label'),
+  rewardRarity: text('reward_rarity'),
+  consecutiveDays: integer('consecutive_days').notNull().default(1),
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+// 寵物訊息（plan v2 §4.2 Hook 1）
+export const petMessages = sqliteTable('pet_messages', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  petId: integer('pet_id').references(() => pets.id),
+  generatedAt: integer('generated_at', { mode: 'timestamp_ms' }).notNull(),
+  category: text('category').notNull(),  // greeting | concern | celebration | reminder
+  text: text('text').notNull(),
+  read: integer('read').notNull().default(0),
+  triggerData: text('trigger_data'),
+});
+
 export const achievements = sqliteTable('achievements', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').notNull().references(() => users.id),
@@ -170,6 +261,25 @@ export type NewBodyMeasurement = typeof bodyMeasurements.$inferInsert;
 export type Meal = typeof meals.$inferSelect;
 export type NewMeal = typeof meals.$inferInsert;
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export type WaterLog = typeof waterLogs.$inferSelect;
+export type NewWaterLog = typeof waterLogs.$inferInsert;
+export type BowelLog = typeof bowelLogs.$inferSelect;
+export type NewBowelLog = typeof bowelLogs.$inferInsert;
+export type SleepLog = typeof sleepLogs.$inferSelect;
+export type NewSleepLog = typeof sleepLogs.$inferInsert;
+export type PeriodDay = typeof periodDays.$inferSelect;
+export type NewPeriodDay = typeof periodDays.$inferInsert;
+export type PetMessage = typeof petMessages.$inferSelect;
+export type NewPetMessage = typeof petMessages.$inferInsert;
+export type PetInventoryItem = typeof petInventory.$inferSelect;
+export type NewPetInventoryItem = typeof petInventory.$inferInsert;
+export type TrinityCompletion = typeof trinityCompletions.$inferSelect;
+export type NewTrinityCompletion = typeof trinityCompletions.$inferInsert;
+
+export type BristolType = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type PeriodFlow = 'spot' | 'light' | 'medium' | 'heavy';
+export type PetMessageCategory = 'greeting' | 'concern' | 'celebration' | 'reminder';
 export type MealItem = { name: string; portion?: string; calories: number; protein: number; carb: number; fat: number };
 
 export type ExerciseCategory = 'strength' | 'cardio' | 'flexibility';

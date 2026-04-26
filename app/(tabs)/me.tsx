@@ -19,7 +19,9 @@ import { clearMealMemory, getMemoryStats } from '@/lib/memory';
 import { exportAll, importAll } from '@/lib/backup';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { importStrongCSV } from '@/lib/csv_import';
-import { type ThemeMode } from '@/lib/theme';
+import { type ThemeMode, type ThemeStyle } from '@/lib/theme';
+import { PixelCard } from '@/components/common/PixelCard';
+import { PixelButton } from '@/components/common/PixelButton';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import * as haptic from '@/lib/haptic';
 
@@ -56,6 +58,8 @@ export default function MeScreen() {
   const [memStats, setMemStats] = useState<{ count: number; totalLogs: number; topNames: string[] }>({ count: 0, totalLogs: 0, topNames: [] });
   const themeMode = useAppStore((s) => s.themeMode);
   const setThemeMode = useAppStore((s) => s.setThemeMode);
+  const themeStyle = useAppStore((s) => s.themeStyle);
+  const setThemeStyle = useAppStore((s) => s.setThemeStyle);
   const authSession = useAppStore((s) => s.authSession);
   const authLoading = useAppStore((s) => s.authLoading);
   const signUpEmail = useAppStore((s) => s.signUpEmail);
@@ -141,6 +145,11 @@ export default function MeScreen() {
   const chooseTheme = async (m: ThemeMode) => {
     haptic.tapLight();
     await setThemeMode(m);
+  };
+
+  const chooseThemeStyle = async (s: ThemeStyle) => {
+    haptic.tapLight();
+    await setThemeStyle(s);
   };
 
   useEffect(() => {
@@ -764,6 +773,59 @@ export default function MeScreen() {
                 })}
               </View>
             </View>
+
+            {/* 🎮 視覺風格（modern / pixel） */}
+            <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3">
+              <Text className="text-kibo-mute text-xs mb-3">🎮 視覺風格 (Beta)</Text>
+              <View className="flex-row gap-2 mb-3">
+                {([
+                  { code: 'modern' as const, label: '🌐 現代' },
+                  { code: 'pixel' as const, label: '👾 像素風' },
+                ]).map((o) => {
+                  const active = themeStyle === o.code;
+                  return (
+                    <Pressable
+                      key={o.code}
+                      onPressIn={() => haptic.tapLight()}
+                      onPress={() => chooseThemeStyle(o.code)}
+                      className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+                    >
+                      <Text className={`font-semibold text-sm ${active ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                        {o.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              {/* 即時預覽 */}
+              <Text className="text-kibo-mute text-[10px] mb-2">預覽：</Text>
+              <PixelCard variant="default" padding={12} style={{ marginBottom: 8 }}>
+                <Text style={{ color: palette.text, fontFamily: themeStyle === 'pixel' ? 'Cubic11' : undefined, fontSize: 14 }}>
+                  Kibo 像素卡片
+                </Text>
+                <Text style={{ color: palette.mute, fontSize: 11, marginTop: 4 }}>
+                  chunky border + hard shadow
+                </Text>
+              </PixelCard>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <PixelButton label="按按看" variant="primary" size="sm" />
+                <PixelButton label="Accent" variant="accent" size="sm" />
+              </View>
+
+              <Text className="text-kibo-mute text-[10px] mt-3 leading-4">
+                像素風目前只套用在新元件（卡片/按鈕），全 App 像素化會在後續版本陸續推進。
+              </Text>
+            </View>
+
+            {/* ⚙️ 健康設定 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/health-settings' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">⚙️ 健康設定</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
 
             {/* 🙋 個人資料 */}
             <Panel

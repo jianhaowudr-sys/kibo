@@ -26,6 +26,8 @@ module.exports = {
       },
       fontFamily: {
         display: ['System'],
+        'pixel-tc': ['Cubic11'],
+        'pixel-en': ['PressStart2P'],
       },
     },
   },

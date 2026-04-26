@@ -63,8 +63,67 @@ async function pushProfile(userId: string) {
     last_workout_date: u.lastWorkoutDate,
     total_workouts: u.totalWorkouts,
     total_exp: u.totalExp,
+    health_settings: u.healthSettings ?? null,
+    dashboard_layout: u.dashboardLayout ?? null,
+    streak_freeze_tokens: u.streakFreezeTokens ?? 0,
+    onboarding_completed_at: toISO(u.onboardingCompletedAt),
     updated_at: new Date().toISOString(),
   }, { onConflict: 'user_id' });
+}
+
+async function pushHealthTables(userId: string) {
+  // 4 個健康表的 push（要求 Supabase 已建表，否則忽略錯誤）
+  try {
+    const water = await db.select().from(schema.waterLogs);
+    if (water.length > 0) {
+      const payload = water.map((w) => ({
+        user_id: userId, local_id: w.id,
+        amount_ml: w.amountMl, logged_at: toISO(w.loggedAt),
+        batch_key: w.batchKey, created_at: toISO(w.createdAt),
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('water_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+    }
+  } catch {}
+  try {
+    const bowel = await db.select().from(schema.bowelLogs);
+    if (bowel.length > 0) {
+      const payload = bowel.map((b) => ({
+        user_id: userId, local_id: b.id,
+        logged_at: toISO(b.loggedAt),
+        bristol: b.bristol, has_blood: b.hasBlood, has_pain: b.hasPain,
+        notes: b.notes, created_at: toISO(b.createdAt),
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('bowel_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+    }
+  } catch {}
+  try {
+    const sleep = await db.select().from(schema.sleepLogs);
+    if (sleep.length > 0) {
+      const payload = sleep.map((s) => ({
+        user_id: userId, local_id: s.id,
+        bedtime_at: toISO(s.bedtimeAt), wake_at: toISO(s.wakeAt),
+        duration_min: s.durationMin, quality: s.quality, day_key: s.dayKey,
+        created_at: toISO(s.createdAt), updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('sleep_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+    }
+  } catch {}
+  try {
+    const period = await db.select().from(schema.periodDays);
+    if (period.length > 0) {
+      const payload = period.map((p) => ({
+        user_id: userId, local_id: p.id,
+        date: toISO(p.date), day_key: p.dayKey,
+        flow: p.flow, symptoms_json: p.symptomsJson,
+        notes: p.notes, is_cycle_start: p.isCycleStart,
+        created_at: toISO(p.createdAt),
+        updated_at: new Date().toISOString(),
+      }));
+      await supabase.from('period_days').upsert(payload, { onConflict: 'user_id,local_id' });
+    }
+  } catch {}
 }
 
 async function pushWorkouts(userId: string) {
@@ -420,6 +479,7 @@ export async function fullSync(userId: string): Promise<SyncStats> {
   await pushRoutines(userId);
   await pushEggsPets(userId);
   await pushAchievements(userId);
+  await pushHealthTables(userId);
 
   stats.pushedWorkouts = Number(w0[0]?.c ?? 0);
   stats.pushedSets = Number(s0[0]?.c ?? 0);

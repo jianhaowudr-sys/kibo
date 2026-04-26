@@ -9,6 +9,7 @@ import * as repo from '@/db/repo';
 import type { Workout, WorkoutSet, Exercise } from '@/db/schema';
 import { displayDateTime, formatDuration } from '@/lib/date';
 import * as haptic from '@/lib/haptic';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
 export default function WorkoutDetail() {
   const router = useRouter();
@@ -95,7 +96,7 @@ export default function WorkoutDetail() {
 
   return (
     <View className="flex-1 bg-kibo-bg">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}>
         {isCelebration && (
           <View className="bg-kibo-accent/15 border border-kibo-accent rounded-2xl p-4 mb-4 items-center">
             <Text className="text-3xl">🎉</Text>

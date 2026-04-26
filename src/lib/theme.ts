@@ -2,8 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { vars } from 'nativewind';
 
 const KEY = '@kibo/theme_mode';
+const STYLE_KEY = '@kibo/theme_style';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeStyle = 'modern' | 'pixel';
 
 export async function getThemeMode(): Promise<ThemeMode> {
   try {
@@ -15,6 +17,18 @@ export async function getThemeMode(): Promise<ThemeMode> {
 
 export async function setThemeMode(mode: ThemeMode): Promise<void> {
   await AsyncStorage.setItem(KEY, mode);
+}
+
+export async function getThemeStyle(): Promise<ThemeStyle> {
+  try {
+    const v = await AsyncStorage.getItem(STYLE_KEY);
+    if (v === 'modern' || v === 'pixel') return v;
+  } catch {}
+  return 'modern';
+}
+
+export async function setThemeStyle(style: ThemeStyle): Promise<void> {
+  await AsyncStorage.setItem(STYLE_KEY, style);
 }
 
 export const THEME_COLORS = {

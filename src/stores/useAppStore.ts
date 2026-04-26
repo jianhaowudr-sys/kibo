@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import type { User, Exercise, Workout, Egg, Pet, EggType, Routine, RoutineExercise, WorkoutSet, BodyMeasurement, Meal, MealType } from '@/db/schema';
-import type { ThemeMode } from '@/lib/theme';
+import type { ThemeMode, ThemeStyle } from '@/lib/theme';
 import type { Session } from '@supabase/supabase-js';
+import type { WaterLog, BowelLog, SleepLog, PeriodDay, PetMessage, BristolType, PeriodFlow } from '@/db/schema';
+import { DEFAULT_HEALTH_SETTINGS, parseHealthSettings, stringifyHealthSettings, type HealthSettings } from '@/lib/health_settings';
+import { QUICK_ADD_BATCH_MS } from '@/lib/gestures';
+import * as healthRepo from '@/db/health_repo';
 
 export type PlannedSet = {
   key: string;
@@ -42,8 +46,27 @@ type State = {
   todayMeals: Meal[];
   todayNutrition: { calories: number; protein: number; carb: number; fat: number; count: number };
   themeMode: ThemeMode;
+  themeStyle: ThemeStyle;
   authSession: Session | null;
   authLoading: boolean;
+
+  // 健康四模組 state
+  waterToday: WaterLog[];
+  bowelToday: BowelLog[];
+  sleepLast: SleepLog | null;
+  periodRecent: PeriodDay[];
+  petMessages: PetMessage[];
+  healthSettings: HealthSettings;
+  /** dashboard layout JSON 字串；未設定就 null */
+  dashboardLayoutJson: string | null;
+  /** streak 補課券 */
+  streakFreezeTokens: number;
+
+  // Undo stack（最多 1 筆）
+  undoStack: { id: string; type: string; message: string; expiresAt: number; undo: () => Promise<void> | void }[];
+
+  // Surprise Box 待開獎
+  pendingReward: { id: string; label: string; rarity: string } | null;
 
   currentWorkoutId: number | null;
   activeSets: ActiveSet[];
@@ -100,6 +123,31 @@ type Actions = {
 
   setThemeMode: (mode: ThemeMode) => Promise<void>;
   loadThemeMode: () => Promise<void>;
+  setThemeStyle: (style: ThemeStyle) => Promise<void>;
+  loadThemeStyle: () => Promise<void>;
+
+  // 健康模組 actions
+  refreshHealth: () => Promise<void>;
+  addWater: (amountMl: number, opts?: { batch?: boolean }) => Promise<void>;
+  addBowel: (opts?: { bristol?: number; hasBlood?: number; hasPain?: number; notes?: string }) => Promise<number>;
+  upsertBowel: (id: number, patch: { bristol?: number; hasBlood?: number; hasPain?: number; notes?: string }) => Promise<void>;
+  upsertSleep: (data: { bedtimeAt: number; wakeAt: number; quality?: number }) => Promise<void>;
+  upsertPeriodDay: (data: { date: number; flow?: PeriodFlow; symptoms?: string[]; notes?: string; isCycleStart?: boolean }) => Promise<void>;
+  endCurrentPeriod: () => Promise<void>;
+  loadHealthSettings: () => Promise<void>;
+  updateHealthSettings: (patch: Partial<HealthSettings>) => Promise<void>;
+  loadDashboardLayout: () => Promise<void>;
+  setDashboardLayoutJson: (json: string) => Promise<void>;
+
+  // Undo
+  pushUndo: (entry: { id: string; type: string; message: string; undo: () => Promise<void> | void }) => void;
+  popUndo: () => void;
+  triggerUndo: () => Promise<void>;
+  clearExpiredUndo: () => void;
+
+  // Surprise Box（Trinity 完成觸發）
+  checkTrinityCompletion: () => Promise<void>;
+  consumePendingReward: () => void;
 
   signUpEmail: (email: string, password: string) => Promise<{ needConfirm: boolean }>;
   signInEmail: (email: string, password: string) => Promise<void>;
@@ -148,7 +196,18 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   todayMeals: [],
   todayNutrition: { calories: 0, protein: 0, carb: 0, fat: 0, count: 0 },
   themeMode: 'dark' as ThemeMode,
+  themeStyle: 'modern' as ThemeStyle,
   authSession: null,
+  waterToday: [],
+  bowelToday: [],
+  sleepLast: null,
+  periodRecent: [],
+  petMessages: [],
+  healthSettings: DEFAULT_HEALTH_SETTINGS,
+  dashboardLayoutJson: null,
+  streakFreezeTokens: 0,
+  undoStack: [],
+  pendingReward: null,
   authLoading: false,
   syncStatus: 'idle',
   lastSyncedAt: null,
@@ -173,6 +232,52 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const routines = user ? await repo.listRoutines(user.id) : [];
     const weeklyCount = user ? await repo.weeklyWorkoutCount(user.id) : 0;
     set({ user, exercises, activeEgg, pets, recentWorkouts, routines, weeklyCount });
+
+    // 健康模組初始化
+    if (user) {
+      const [hsRaw, dlRaw, tokens] = await Promise.all([
+        healthRepo.getHealthSettings(user.id),
+        healthRepo.getDashboardLayout(user.id),
+        healthRepo.getStreakFreezeTokens(user.id),
+      ]);
+      set({
+        healthSettings: parseHealthSettings(hsRaw),
+        dashboardLayoutJson: dlRaw,
+        streakFreezeTokens: tokens,
+      });
+
+      // 嘗試自動消耗補課券救 streak
+      try {
+        const { tryAutoFreeze } = await import('@/lib/streak_freeze');
+        const result = await tryAutoFreeze(user);
+        if (result.used) {
+          await get().refreshUser();
+          // 寫一則寵物訊息通知使用者
+          await healthRepo.addPetMessage({
+            userId: user.id,
+            petId: pets[0]?.id ?? null,
+            generatedAt: new Date(),
+            category: 'celebration',
+            text: `補課券救了你的 ${user.streak} 天連續紀錄！還有 ${result.tokensLeft} 張`,
+            read: 0,
+            triggerData: JSON.stringify({ type: 'freeze-used', tokensLeft: result.tokensLeft }),
+          });
+          set({ streakFreezeTokens: result.tokensLeft });
+        }
+      } catch (e) {
+        console.warn('Auto freeze failed', e);
+      }
+
+      // 每天首次 bootstrap 生成寵物訊息（同天不重複，pet_messages 內部會去重）
+      try {
+        const { generateDailyMessages } = await import('@/lib/pet_messages');
+        await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
+      } catch (e) {
+        console.warn('Pet messages generate failed', e);
+      }
+
+      await get().refreshHealth();
+    }
   },
 
   refreshUser: async () => {
@@ -275,11 +380,15 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
 
     const today = todayKey();
     let streak = user.streak;
+    let tokenDelta = 0;
     if (user.lastWorkoutDate !== today) {
       const y = new Date();
       y.setDate(y.getDate() - 1);
       const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
-      streak = user.lastWorkoutDate === yesterday ? streak + 1 : 1;
+      const next = user.lastWorkoutDate === yesterday ? streak + 1 : 1;
+      // 每 7 天連續 → 發 1 張補課券（streak 2.0）
+      if (next > streak && next % 7 === 0) tokenDelta = 1;
+      streak = next;
     }
 
     await repo.updateUser(user.id, {
@@ -288,6 +397,11 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       streak,
       lastWorkoutDate: today,
     });
+
+    if (tokenDelta !== 0) {
+      const newTokens = await healthRepo.updateStreakFreezeTokens(user.id, tokenDelta);
+      set({ streakFreezeTokens: newTokens });
+    }
 
     let hatched = false;
     if (activeEgg) {
@@ -319,6 +433,8 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     await get().refreshEgg();
     await get().refreshPets();
     await get().refreshHistory();
+    // 訓練完成 → 動圈勾掉 → 觸發 Trinity 檢查
+    try { await get().checkTrinityCompletion(); } catch {}
     get().enqueueSync?.();
 
     return { workoutId: currentWorkoutId, totalExp, hatched };
@@ -498,6 +614,280 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const mode = await getThemeMode();
     set({ themeMode: mode });
     colorScheme.set(mode);
+  },
+
+  setThemeStyle: async (style) => {
+    set({ themeStyle: style });
+    const { setThemeStyle: persist } = await import('@/lib/theme');
+    await persist(style);
+  },
+
+  loadThemeStyle: async () => {
+    const { getThemeStyle } = await import('@/lib/theme');
+    const style = await getThemeStyle();
+    set({ themeStyle: style });
+  },
+
+  // ===== 健康模組 =====
+
+  refreshHealth: async () => {
+    const u = get().user;
+    if (!u) return;
+    const [water, bowel, sleep, period, msgs, tokens] = await Promise.all([
+      healthRepo.listWaterToday(u.id),
+      healthRepo.listBowelToday(u.id),
+      healthRepo.getSleepLast(u.id),
+      healthRepo.listPeriodDays(u.id, 90),
+      healthRepo.listPetMessages(u.id, 30),
+      healthRepo.getStreakFreezeTokens(u.id),
+    ]);
+    set({
+      waterToday: water,
+      bowelToday: bowel,
+      sleepLast: sleep,
+      periodRecent: period,
+      petMessages: msgs,
+      streakFreezeTokens: tokens,
+    });
+    // 任何健康資料變動後檢查 Trinity 完成
+    try { await get().checkTrinityCompletion(); } catch {}
+  },
+
+  addWater: async (amountMl, opts) => {
+    const u = get().user;
+    if (!u) return;
+    // 連點合併 batch 檢查：找最近的 water log 是否在 batch window 內
+    const now = Date.now();
+    const recent = get().waterToday[0];
+    let batchKey: string | undefined;
+    if (recent && opts?.batch !== false) {
+      const recentTs = recent.loggedAt instanceof Date ? recent.loggedAt.getTime() : Number(recent.loggedAt);
+      if (now - recentTs <= QUICK_ADD_BATCH_MS && recent.batchKey) {
+        batchKey = recent.batchKey;
+      }
+    }
+    if (!batchKey && opts?.batch !== false) {
+      batchKey = `b_${now}`;
+    }
+    const id = await healthRepo.addWater({ userId: u.id, amountMl, loggedAt: now, batchKey });
+    await get().refreshHealth();
+    get().enqueueSync?.();
+    // push undo（以 batchKey 為主）
+    if (batchKey) {
+      get().pushUndo({
+        id: `water-${batchKey}`,
+        type: 'water',
+        message: `已記錄水量`,
+        undo: async () => {
+          await healthRepo.deleteWaterBatch(batchKey!);
+          await get().refreshHealth();
+        },
+      });
+    } else {
+      get().pushUndo({
+        id: `water-${id}`,
+        type: 'water',
+        message: `已記錄 +${amountMl}ml`,
+        undo: async () => {
+          await healthRepo.deleteWater(id);
+          await get().refreshHealth();
+        },
+      });
+    }
+  },
+
+  addBowel: async (opts) => {
+    const u = get().user;
+    if (!u) return 0;
+    const id = await healthRepo.addBowel({ userId: u.id, ...(opts ?? {}) });
+    await get().refreshHealth();
+    get().enqueueSync?.();
+    get().pushUndo({
+      id: `bowel-${id}`,
+      type: 'bowel',
+      message: `已記錄排便`,
+      undo: async () => {
+        await healthRepo.deleteBowel(id);
+        await get().refreshHealth();
+      },
+    });
+    return id;
+  },
+
+  upsertBowel: async (id, patch) => {
+    await healthRepo.updateBowel(id, patch);
+    await get().refreshHealth();
+    get().enqueueSync?.();
+  },
+
+  upsertSleep: async (data) => {
+    const u = get().user;
+    if (!u) return;
+    await healthRepo.upsertSleep({ userId: u.id, ...data });
+    await get().refreshHealth();
+    get().enqueueSync?.();
+  },
+
+  upsertPeriodDay: async (data) => {
+    const u = get().user;
+    if (!u) return;
+    const id = await healthRepo.upsertPeriodDay({
+      userId: u.id,
+      date: data.date,
+      flow: data.flow,
+      symptoms: data.symptoms,
+      notes: data.notes,
+      isCycleStart: data.isCycleStart ? 1 : 0,
+    });
+    await get().refreshHealth();
+    get().enqueueSync?.();
+    if (data.isCycleStart) {
+      // 不放入 undo（explicit save）
+    } else {
+      get().pushUndo({
+        id: `period-${id}`,
+        type: 'period',
+        message: `已記錄經期`,
+        undo: async () => {
+          await healthRepo.deletePeriodDay(id);
+          await get().refreshHealth();
+        },
+      });
+    }
+  },
+
+  endCurrentPeriod: async () => {
+    // 不刪除任何資料，只是接下來不再記日。實作方式：當下次 isCycleStart=true 才會啟新週期。
+    // 此處不變動 DB，僅刷新 UI。
+    await get().refreshHealth();
+  },
+
+  loadHealthSettings: async () => {
+    const u = get().user;
+    if (!u) return;
+    const raw = await healthRepo.getHealthSettings(u.id);
+    set({ healthSettings: parseHealthSettings(raw) });
+  },
+
+  updateHealthSettings: async (patch) => {
+    const u = get().user;
+    if (!u) return;
+    const merged: HealthSettings = {
+      ...get().healthSettings,
+      ...patch,
+      water: { ...get().healthSettings.water, ...(patch.water ?? {}) },
+      bowel: { ...get().healthSettings.bowel, ...(patch.bowel ?? {}) },
+      sleep: { ...get().healthSettings.sleep, ...(patch.sleep ?? {}) },
+      period: { ...get().healthSettings.period, ...(patch.period ?? {}) },
+    };
+    set({ healthSettings: merged });
+    await healthRepo.setHealthSettings(u.id, stringifyHealthSettings(merged));
+    get().enqueueSync?.();
+    // 重排提醒
+    try {
+      const { rescheduleAll } = await import('@/lib/reminders');
+      await rescheduleAll(merged);
+    } catch {}
+  },
+
+  loadDashboardLayout: async () => {
+    const u = get().user;
+    if (!u) return;
+    const raw = await healthRepo.getDashboardLayout(u.id);
+    set({ dashboardLayoutJson: raw });
+  },
+
+  setDashboardLayoutJson: async (json) => {
+    const u = get().user;
+    if (!u) return;
+    set({ dashboardLayoutJson: json });
+    await healthRepo.setDashboardLayout(u.id, json);
+    get().enqueueSync?.();
+  },
+
+  pushUndo: (entry) => {
+    const expiresAt = Date.now() + 5000;
+    set({ undoStack: [{ ...entry, expiresAt }] });
+  },
+
+  popUndo: () => {
+    set({ undoStack: [] });
+  },
+
+  triggerUndo: async () => {
+    const top = get().undoStack[0];
+    if (!top) return;
+    set({ undoStack: [] });
+    try {
+      await top.undo();
+    } catch (e) {
+      console.warn('Undo failed', e);
+    }
+  },
+
+  clearExpiredUndo: () => {
+    const now = Date.now();
+    const stack = get().undoStack.filter((e) => e.expiresAt > now);
+    if (stack.length !== get().undoStack.length) set({ undoStack: stack });
+  },
+
+  checkTrinityCompletion: async () => {
+    const u = get().user;
+    if (!u) return;
+    // 已完成今天 → 不重複抽
+    const existing = await healthRepo.getTrinityToday(u.id);
+    if (existing) return;
+
+    // 計算當日 trinity
+    const { evaluateTrinity, rollSurpriseBox } = await import('@/lib/daily_trinity');
+    const recent = get().recentWorkouts.filter((w: any) => {
+      const d = new Date(w.startedAt); const today = new Date();
+      return d.toDateString() === today.toDateString();
+    });
+    const todayKey = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const todayPeriodDays = get().periodRecent.filter((p) => p.dayKey === todayKey);
+
+    const trinity = evaluateTrinity({
+      todayWorkouts: recent as any,
+      todayMeals: get().todayMeals,
+      todayWater: get().waterToday,
+      waterGoalMl: get().healthSettings.water.dailyGoalMl,
+      todayBowel: get().bowelToday,
+      sleepLast: get().sleepLast,
+      todayPeriodDays: todayPeriodDays as any,
+    });
+    if (!trinity.complete) return;
+
+    // 抽獎 + 記錄
+    const consecutive = (await healthRepo.countTrinityConsecutive(u.id)) + 1;
+    const reward = rollSurpriseBox(consecutive);
+    await healthRepo.recordTrinityCompletion({
+      userId: u.id,
+      rewardId: reward.id,
+      rewardLabel: reward.label,
+      rewardRarity: reward.rarity,
+      consecutiveDays: consecutive,
+    });
+    await healthRepo.addInventoryItem({
+      userId: u.id,
+      itemId: reward.id,
+      itemLabel: reward.label,
+      rarity: reward.rarity,
+      source: 'trinity',
+    });
+    // 補課券特殊：直接 +1 token
+    if (reward.id === 'freeze-token') {
+      const newTokens = await healthRepo.updateStreakFreezeTokens(u.id, 1);
+      set({ streakFreezeTokens: newTokens });
+    }
+    set({ pendingReward: { id: reward.id, label: reward.label, rarity: reward.rarity } });
+  },
+
+  consumePendingReward: () => {
+    set({ pendingReward: null });
   },
 
   signUpEmail: async (email, password) => {

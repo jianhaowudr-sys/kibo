@@ -1,14 +1,19 @@
-import { View, Text, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import { View, Text, Pressable, TextInput, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as repo from '@/db/repo';
 import * as haptic from '@/lib/haptic';
+import { LONG_PRESS_MS } from '@/lib/gestures';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import type { Routine, RoutineExercise, Exercise } from '@/db/schema';
 
 const EMOJI_PRESET = ['💪', '🦵', '🔥', '🏋️', '🏃', '🧘', '🤸', '🎯'];
+
+type RexRow = RoutineExercise & { ex: Exercise };
 
 export default function RoutineEdit() {
   const palette = useThemePalette();
@@ -20,7 +25,7 @@ export default function RoutineEdit() {
   const refreshRoutines = useAppStore((s) => s.refreshRoutines);
 
   const [routine, setRoutine] = useState<Routine | null>(null);
-  const [rexs, setRexs] = useState<(RoutineExercise & { ex: Exercise })[]>([]);
+  const [rexs, setRexs] = useState<RexRow[]>([]);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('💪');
   const [note, setNote] = useState('');
@@ -77,11 +82,61 @@ export default function RoutineEdit() {
     ]);
   };
 
-  if (!routine) return null;
+  const handleReorder = async (newData: RexRow[]) => {
+    haptic.success();
+    setRexs(newData);
+    // persist orderIdx
+    await Promise.all(
+      newData.map((r, idx) =>
+        r.orderIdx === idx ? Promise.resolve() : repo.updateRoutineExercise(r.id, { orderIdx: idx })
+      )
+    );
+    setRexs((prev) => prev.map((r, idx) => ({ ...r, orderIdx: idx })));
+    await refreshRoutines();
+  };
 
-  return (
-    <View className="flex-1 bg-kibo-bg">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+  const renderRow = ({ item: r, drag, isActive }: RenderItemParams<RexRow>) => (
+    <Pressable
+      onLongPress={() => {
+        haptic.tapMedium();
+        drag();
+      }}
+      delayLongPress={LONG_PRESS_MS}
+      className="bg-kibo-surface rounded-xl p-3 border border-kibo-card flex-row items-center gap-2 mb-2"
+      style={{
+        opacity: isActive ? 0.92 : 1,
+        transform: [{ scale: isActive ? 1.02 : 1 }],
+        shadowColor: palette.text,
+        shadowOpacity: isActive ? 0.3 : 0,
+        shadowRadius: isActive ? 8 : 0,
+        shadowOffset: { width: 0, height: isActive ? 4 : 0 },
+        elevation: isActive ? 6 : 0,
+      }}
+    >
+      <Text style={{ color: palette.mute, fontSize: 18, paddingHorizontal: 4 }}>≡</Text>
+      <Text className="text-2xl">{r.ex.icon}</Text>
+      <View className="flex-1">
+        <Text className="text-kibo-text font-semibold">{r.ex.name}</Text>
+        <Text className="text-kibo-mute text-xs">{r.ex.muscleGroup}</Text>
+      </View>
+      <View className="flex-row items-center gap-1 bg-kibo-card rounded-lg px-1">
+        <Pressable onPress={() => updateSets(r.id, -1)} className="px-3 py-1">
+          <Text className="text-kibo-text text-lg">−</Text>
+        </Pressable>
+        <Text className="text-kibo-text font-bold w-5 text-center">{r.targetSets}</Text>
+        <Pressable onPress={() => updateSets(r.id, 1)} className="px-3 py-1">
+          <Text className="text-kibo-text text-lg">＋</Text>
+        </Pressable>
+      </View>
+      <Pressable onPress={() => removeExercise(r.id, r.ex.name)} className="p-2">
+        <Text className="text-kibo-danger">✕</Text>
+      </Pressable>
+    </Pressable>
+  );
+
+  const ListHeader = useMemo(
+    () => (
+      <View>
         <Text className="text-kibo-mute text-xs mb-2">名稱</Text>
         <TextInput
           value={name}
@@ -116,36 +171,31 @@ export default function RoutineEdit() {
           className="bg-kibo-surface text-kibo-text rounded-xl px-4 py-3 mb-4 border border-kibo-card"
         />
 
-        <Text className="text-kibo-text text-base font-bold mb-2">
+        <Text className="text-kibo-text text-base font-bold mb-1">
           動作清單 ({rexs.length})
         </Text>
-        <View className="gap-2 mb-4">
-          {rexs.map((r) => (
-            <View key={r.id} className="bg-kibo-surface rounded-xl p-3 border border-kibo-card flex-row items-center gap-3">
-              <Text className="text-2xl">{r.ex.icon}</Text>
-              <View className="flex-1">
-                <Text className="text-kibo-text font-semibold">{r.ex.name}</Text>
-                <Text className="text-kibo-mute text-xs">{r.ex.muscleGroup}</Text>
-              </View>
-              <View className="flex-row items-center gap-1 bg-kibo-card rounded-lg px-1">
-                <Pressable onPress={() => updateSets(r.id, -1)} className="px-3 py-1">
-                  <Text className="text-kibo-text text-lg">−</Text>
-                </Pressable>
-                <Text className="text-kibo-text font-bold w-5 text-center">{r.targetSets}</Text>
-                <Pressable onPress={() => updateSets(r.id, 1)} className="px-3 py-1">
-                  <Text className="text-kibo-text text-lg">＋</Text>
-                </Pressable>
-              </View>
-              <Pressable onPress={() => removeExercise(r.id, r.ex.name)} className="p-2">
-                <Text className="text-kibo-danger">✕</Text>
-              </Pressable>
-            </View>
-          ))}
-          {rexs.length === 0 && (
-            <Text className="text-kibo-mute text-center text-xs py-4">動作已全部移除</Text>
-          )}
-        </View>
-      </ScrollView>
+        <Text className="text-kibo-mute text-[10px] mb-3">長按拖曳可調整順序</Text>
+      </View>
+    ),
+    [name, emoji, note, rexs.length, palette.placeholder]
+  );
+
+  if (!routine) return null;
+
+  return (
+    <View className="flex-1 bg-kibo-bg">
+      <DraggableFlatList
+        data={rexs}
+        keyExtractor={(it) => String(it.id)}
+        renderItem={renderRow}
+        onDragEnd={({ data }) => handleReorder(data)}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={
+          <Text className="text-kibo-mute text-center text-xs py-4">動作已全部移除</Text>
+        }
+        contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}
+        activationDistance={5}
+      />
 
       <View
         className="absolute bottom-0 left-0 right-0 bg-kibo-surface border-t border-kibo-card px-4 pt-3 flex-row gap-2"
