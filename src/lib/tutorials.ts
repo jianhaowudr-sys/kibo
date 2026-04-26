@@ -63,6 +63,13 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'me',
     icon: '⚡',
   },
+  'stats-customize': {
+    id: 'stats-customize',
+    title: '自訂數據顯示',
+    body: '「我 → 數據」右上 ⚙️ 可選擇顯示哪些區塊（範圍、總覽、進度、各種 panel）並拖曳排序。',
+    scope: 'me',
+    icon: '📊',
+  },
   'bowel-longpress-detail': {
     id: 'bowel-longpress-detail',
     title: '長按詳填',

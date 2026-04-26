@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, Pressable, TextInput, Alert, Image as ExpoImage } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { WeeklyChart } from '@/components/WeeklyChart';
 import { StatCard } from '@/components/StatCard';
@@ -22,6 +22,7 @@ import { importStrongCSV } from '@/lib/csv_import';
 import { type ThemeMode, type ThemeStyle } from '@/lib/theme';
 import { PixelCard } from '@/components/common/PixelCard';
 import { PixelButton } from '@/components/common/PixelButton';
+import { parseStatsLayout, type StatsItemId } from '@/lib/stats_layout';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import * as haptic from '@/lib/haptic';
 
@@ -62,6 +63,9 @@ export default function MeScreen() {
   const setThemeStyle = useAppStore((s) => s.setThemeStyle);
   const lowPowerMode = useAppStore((s) => s.lowPowerMode);
   const setLowPowerMode = useAppStore((s) => s.setLowPowerMode);
+  const statsLayoutJson = useAppStore((s) => s.statsLayoutJson);
+  const statsLayout = useMemo(() => parseStatsLayout(statsLayoutJson), [statsLayoutJson]);
+  const isStatsItemVisible = (id: StatsItemId) => statsLayout.items.find((x) => x.id === id)?.visible !== false;
   const authSession = useAppStore((s) => s.authSession);
   const authLoading = useAppStore((s) => s.authLoading);
   const signUpEmail = useAppStore((s) => s.signUpEmail);
@@ -282,7 +286,20 @@ export default function MeScreen() {
       <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
         {section === 'stats' && (
           <>
+            {/* 自訂數據入口 */}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 8 }}>
+              <Pressable
+                onPress={() => { haptic.tapLight(); router.push('/stats/customize' as any); }}
+                hitSlop={8}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: palette.card }}
+              >
+                <Text style={{ fontSize: 14 }}>⚙️</Text>
+                <Text style={{ color: palette.text, fontSize: 11, fontWeight: '600' }}>自訂顯示</Text>
+              </Pressable>
+            </View>
+
             {/* 範圍 pill selector */}
+            {isStatsItemVisible('range-pills') && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
               <View className="flex-row gap-2">
                 {([
@@ -308,13 +325,17 @@ export default function MeScreen() {
                 })}
               </View>
             </ScrollView>
+            )}
 
             {/* 總覽卡片 */}
+            {isStatsItemVisible('overview-cards') && (
             <View className="flex-row gap-3 mb-3">
               <StatCard label="訓練家等級" value={lvl.level} icon="🏆" color="text-kibo-accent" />
               <StatCard label="連續天數" value={user.streak} suffix="天" icon="🔥" color="text-kibo-accent" />
             </View>
+            )}
 
+            {isStatsItemVisible('level-progress') && (
             <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3">
               <Text className="text-kibo-mute text-xs mb-2">升等進度</Text>
               <View className="flex-row items-baseline justify-between mb-2">
@@ -328,7 +349,9 @@ export default function MeScreen() {
                 />
               </View>
             </View>
+            )}
 
+            {isStatsItemVisible('weekly-goal') && (
             <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3">
               <View className="flex-row items-center justify-between mb-2">
                 <Text className="text-kibo-mute text-xs">本週目標</Text>
@@ -341,13 +364,17 @@ export default function MeScreen() {
                 />
               </View>
             </View>
+            )}
 
-            {/* 近 7 日圖表（常駐） */}
+            {/* 近 7 日圖表 */}
+            {isStatsItemVisible('weekly-chart') && (
             <View className="mb-3">
               <WeeklyChart data={data} />
             </View>
+            )}
 
             {/* Panel: 訓練數據 */}
+            {isStatsItemVisible('workout-panel') && (
             <Panel
               id="workout"
               open={statsPanel === 'workout'}
@@ -372,8 +399,10 @@ export default function MeScreen() {
                 </>
               )}
             </Panel>
+            )}
 
             {/* Panel: 飲食數據 */}
+            {isStatsItemVisible('meal-panel') && (
             <Panel
               id="meal"
               open={statsPanel === 'meal'}
@@ -401,8 +430,10 @@ export default function MeScreen() {
                 </>
               )}
             </Panel>
+            )}
 
             {/* Panel: 體態變化 */}
+            {isStatsItemVisible('body-panel') && (
             <Panel
               id="body"
               open={statsPanel === 'body'}
@@ -432,8 +463,10 @@ export default function MeScreen() {
                 </>
               )}
             </Panel>
+            )}
 
             {/* Panel: 綜合活動 */}
+            {isStatsItemVisible('overall-panel') && (
             <Panel
               id="overall"
               open={statsPanel === 'overall'}
@@ -451,6 +484,7 @@ export default function MeScreen() {
                 <StatCard label="30 天訓練" value={workoutDates.length} suffix="天" icon="📅" />
               </View>
             </Panel>
+            )}
           </>
         )}
 

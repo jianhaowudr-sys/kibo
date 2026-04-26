@@ -35,6 +35,7 @@ export default function RootLayout() {
   const loadThemeStyle = useAppStore((s) => s.loadThemeStyle);
   const loadLowPowerMode = useAppStore((s) => s.loadLowPowerMode);
   const loadCalendarViewMode = useAppStore((s) => s.loadCalendarViewMode);
+  const loadStatsLayoutJson = useAppStore((s) => s.loadStatsLayoutJson);
   const loadAuthSession = useAppStore((s) => s.loadAuthSession);
   const hydrateTutorial = useTutorialStore((s) => s.hydrate);
   const themeMode = useAppStore((s) => s.themeMode);
@@ -74,6 +75,7 @@ export default function RootLayout() {
         await loadThemeStyle();
         await loadLowPowerMode();
         await loadCalendarViewMode();
+        await loadStatsLayoutJson();
         await hydrateTutorial();
         await loadAuthSession();
         // 第一次啟動 → 進 onboarding
@@ -144,6 +146,7 @@ export default function RootLayout() {
           <Stack.Screen name="health/period" options={{ title: '經期紀錄' }} />
           <Stack.Screen name="me/health-settings" options={{ title: '健康設定' }} />
           <Stack.Screen name="dashboard/customize" options={{ title: '自訂首頁', presentation: 'modal' }} />
+          <Stack.Screen name="stats/customize" options={{ title: '自訂數據', presentation: 'modal' }} />
           <Stack.Screen name="onboarding/index" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="pet/index" options={{ headerShown: false }} />
           <Stack.Screen name="pet/inventory" options={{ title: '圖鑑收藏' }} />

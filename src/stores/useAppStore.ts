@@ -49,6 +49,7 @@ type State = {
   themeStyle: ThemeStyle;
   lowPowerMode: boolean;
   calendarViewMode: 'month' | 'week' | 'last7days';
+  statsLayoutJson: string | null;
   authSession: Session | null;
   authLoading: boolean;
 
@@ -131,6 +132,8 @@ type Actions = {
   loadLowPowerMode: () => Promise<void>;
   setCalendarViewMode: (m: 'month' | 'week' | 'last7days') => Promise<void>;
   loadCalendarViewMode: () => Promise<void>;
+  setStatsLayoutJson: (json: string) => Promise<void>;
+  loadStatsLayoutJson: () => Promise<void>;
 
   // 健康模組 actions
   refreshHealth: () => Promise<void>;
@@ -205,6 +208,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   themeStyle: 'modern' as ThemeStyle,
   lowPowerMode: false,
   calendarViewMode: 'month' as 'month' | 'week' | 'last7days',
+  statsLayoutJson: null,
   authSession: null,
   waterToday: [],
   bowelToday: [],
@@ -658,6 +662,18 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const v = await AsyncStorage.getItem('@kibo/calendar_view');
     if (v === 'month' || v === 'week' || v === 'last7days') set({ calendarViewMode: v });
+  },
+
+  setStatsLayoutJson: async (json) => {
+    set({ statsLayoutJson: json });
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.setItem('@kibo/stats_layout', json);
+  },
+
+  loadStatsLayoutJson: async () => {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const v = await AsyncStorage.getItem('@kibo/stats_layout');
+    set({ statsLayoutJson: v });
   },
 
   // ===== 健康模組 =====
