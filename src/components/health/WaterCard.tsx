@@ -6,6 +6,7 @@ import { useThemePalette } from '@/lib/useThemePalette';
 import { LONG_PRESS_MS } from '@/lib/gestures';
 import * as haptic from '@/lib/haptic';
 import { WheelPicker } from '@/components/common/WheelPicker';
+import { WaterRecordModal } from './WaterRecordModal';
 
 type Props = {
   /** 'compact' = 一鍵記錄；'full' = inline wheel + 杯/瓶 + 記錄鍵 */
@@ -31,39 +32,47 @@ export function WaterCard({ mode = 'full' }: Props) {
   const filled = Math.round(pct * totalChunks);
   const chunks = useMemo(() => Array.from({ length: totalChunks }, (_, i) => i < filled), [filled]);
 
-  // ===== Compact 模式（一鍵直接記錄）=====
+  const [recordOpen, setRecordOpen] = useState(false);
+
+  // ===== Compact 模式（一鍵直接記錄 + ⋯ 進詳選 modal）=====
   if (mode === 'compact') {
     return (
-      <Pressable
-        onLongPress={() => router.push('/health/water' as any)}
-        delayLongPress={LONG_PRESS_MS}
-        style={{
-          flex: 1,
-          backgroundColor: palette.surface,
-          borderRadius: 16,
-          padding: 12,
-          borderWidth: 1,
-          borderColor: palette.card,
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-          <Text style={{ fontSize: 18, marginRight: 6 }}>💧</Text>
-          <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
-            達成 {pctDisplay}%
-          </Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: 2, marginBottom: 8 }}>
-          {chunks.map((on, i) => (
-            <View key={i} style={{ flex: 1, height: 6, backgroundColor: on ? '#29adff' : palette.card, borderRadius: 2 }} />
-          ))}
-        </View>
+      <>
         <Pressable
-          onPress={() => { haptic.tapLight(); addWater(settings.water.favoriteCupMl, { batch: false }); }}
-          style={{ backgroundColor: palette.primary, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+          onLongPress={() => router.push('/health/water' as any)}
+          delayLongPress={LONG_PRESS_MS}
+          style={{
+            flex: 1,
+            backgroundColor: palette.surface,
+            borderRadius: 16,
+            padding: 12,
+            borderWidth: 1,
+            borderColor: palette.card,
+          }}
         >
-          <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 13 }}>+ 喝水 {settings.water.favoriteCupMl}ml</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 18, marginRight: 6 }}>💧</Text>
+            <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+              達成 {pctDisplay}%
+            </Text>
+            <Pressable hitSlop={12} onPress={() => { haptic.tapMedium(); setRecordOpen(true); }}>
+              <Text style={{ color: palette.mute, fontSize: 18, paddingHorizontal: 4 }}>⋯</Text>
+            </Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 2, marginBottom: 8 }}>
+            {chunks.map((on, i) => (
+              <View key={i} style={{ flex: 1, height: 6, backgroundColor: on ? '#29adff' : palette.card, borderRadius: 2 }} />
+            ))}
+          </View>
+          <Pressable
+            onPress={() => { haptic.tapLight(); addWater(settings.water.favoriteCupMl, { batch: false }); }}
+            style={{ backgroundColor: palette.primary, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+          >
+            <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 13 }}>+ 喝水 {settings.water.favoriteCupMl}ml</Text>
+          </Pressable>
         </Pressable>
-      </Pressable>
+        <WaterRecordModal visible={recordOpen} onClose={() => setRecordOpen(false)} />
+      </>
     );
   }
 
