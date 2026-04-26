@@ -77,6 +77,8 @@ export type MealParseOptions = {
   extraHint?: string;
   economy?: boolean;
   capturedAt?: Date | number;
+  /** 手掌參照（plan v6）：照片中若有平放手掌，AI 用此 calibrate 真實尺寸 */
+  palmRef?: { lengthCm: number; widthCm: number };
 };
 
 function mealTimeHint(ts?: Date | number): string {
@@ -141,6 +143,15 @@ async function singleRead(base64: string, options: InternalOptions): Promise<Mea
   const timeHint = mealTimeHint(options.capturedAt);
   if (timeHint) parts.push(timeHint);
   if (options.memoryHint) parts.push(options.memoryHint);
+  if (options.palmRef) {
+    parts.push(
+      `## 比例尺參照
+使用者的手掌張開時：長 ${options.palmRef.lengthCm} cm（中指尖到手腕）、寬 ${options.palmRef.widthCm} cm（四指根橫寬不含拇指）。
+若照片中出現平放且五指張開的手掌，請優先用此 calibrate 食物的真實尺寸再估份量；若手掌姿勢非五指張開或不平放（如握拳、側立、捏東西），可忽略此參照。
+
+⚠️ 重要校正：你過往對台灣食物份量普遍高估 20~40%（特別是便當、麵食、油脂類），這次有比例尺請重新檢視，不要套用「便當盒一定 700~800g」這類預設先驗——以實際照片中食物相對於手掌的尺寸為準。`,
+    );
+  }
   const hint = options.extraHint?.trim();
   if (hint) parts.push(`使用者補充：${hint}`);
   const userText = parts.join('\n');

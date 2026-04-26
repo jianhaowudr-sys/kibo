@@ -35,6 +35,12 @@ export type HealthSettings = {
     predictionEnabled: boolean;
     pmsReminderEnabled: boolean;
   };
+  body: {
+    /** 手掌張開總長：中指尖到手腕，cm */
+    palmLengthCm: number;
+    /** 手掌張開時四指根的橫寬（不含拇指），cm */
+    palmWidthCm: number;
+  };
 };
 
 export const DEFAULT_HEALTH_SETTINGS: HealthSettings = {
@@ -75,6 +81,10 @@ export const DEFAULT_HEALTH_SETTINGS: HealthSettings = {
     predictionEnabled: true,
     pmsReminderEnabled: false,
   },
+  body: {
+    palmLengthCm: 18,  // 成人平均偏中等
+    palmWidthCm: 9,
+  },
 };
 
 export function parseHealthSettings(raw: string | null): HealthSettings {
@@ -88,6 +98,7 @@ export function parseHealthSettings(raw: string | null): HealthSettings {
       bowel: { ...DEFAULT_HEALTH_SETTINGS.bowel, ...(obj.bowel ?? {}) },
       sleep: { ...DEFAULT_HEALTH_SETTINGS.sleep, ...(obj.sleep ?? {}) },
       period: { ...DEFAULT_HEALTH_SETTINGS.period, ...(obj.period ?? {}) },
+      body: { ...DEFAULT_HEALTH_SETTINGS.body, ...(obj.body ?? {}) },
     };
   } catch {
     return DEFAULT_HEALTH_SETTINGS;

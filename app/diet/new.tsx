@@ -55,7 +55,9 @@ export default function NewMeal() {
   const [perPhotoReadings, setPerPhotoReadings] = useState<MealReading[]>([]);
   const [mergeMode, setMergeMode] = useState<MergeMode>('sameMeal');
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [includePalmRef, setIncludePalmRef] = useState(false);
   const lowPower = useLowPower();
+  const healthSettings = useAppStore((s) => s.healthSettings);
 
   const onPickFromLibrary = (item: MealItem) => {
     const newItems = [...items, item];
@@ -174,17 +176,21 @@ export default function NewMeal() {
 
     setOcrLoading(true);
     haptic.tapMedium();
+    const palmRef = includePalmRef
+      ? { lengthCm: healthSettings.body.palmLengthCm, widthCm: healthSettings.body.palmWidthCm }
+      : undefined;
     try {
       if (photos.length === 1) {
         const reading = await readMealFromBase64(photos[0].base64, {
           capturedAt: photos[0].takenAt ?? Date.now(),
+          palmRef,
         });
         setPerPhotoReadings([reading]);
         apply(reading);
       } else {
         const readings = await readMealsFromMultiplePhotos(
           photos.map((p) => p.base64),
-          {},
+          { palmRef },
           lowPower, // 低負擔模式 → 序列
         );
         setPerPhotoReadings(readings);
@@ -404,6 +410,38 @@ export default function NewMeal() {
         )}
 
         {photos.length > 0 && (
+          <>
+          <Pressable
+            onPress={() => {
+              haptic.tapLight();
+              if (!includePalmRef) {
+                const isDefault = healthSettings.body.palmLengthCm === 18 && healthSettings.body.palmWidthCm === 9;
+                if (isDefault) {
+                  Alert.alert(
+                    '手掌參照已開啟',
+                    '目前使用預設值 18×9 cm（成人平均）。建議到「我 → 健康偏好 → 我的手掌尺寸」填自己的會更準。',
+                    [{ text: '知道了', onPress: () => setIncludePalmRef(true) }],
+                  );
+                  return;
+                }
+              }
+              setIncludePalmRef(!includePalmRef);
+            }}
+            className={`flex-row items-center p-3 mb-3 rounded-xl ${includePalmRef ? 'bg-kibo-primary' : 'bg-kibo-surface border border-kibo-card'}`}
+          >
+            <Text style={{ fontSize: 18, marginRight: 8 }}>✋</Text>
+            <View style={{ flex: 1 }}>
+              <Text className={`font-semibold text-sm ${includePalmRef ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                拍照時手掌入鏡？{includePalmRef ? 'ON' : 'OFF'}
+              </Text>
+              <Text className={`text-[10px] mt-0.5 ${includePalmRef ? 'text-kibo-bg/80' : 'text-kibo-mute'}`}>
+                {includePalmRef
+                  ? `AI 會用你的手掌 (${healthSettings.body.palmLengthCm}×${healthSettings.body.palmWidthCm} cm) 校準份量`
+                  : '勾選後 AI 用你手掌當比例尺，估算更準（解決常見高估）'}
+              </Text>
+            </View>
+          </Pressable>
+
           <Pressable
             onPress={onAIParse}
             disabled={ocrLoading}
@@ -422,6 +460,7 @@ export default function NewMeal() {
               </Text>
             )}
           </Pressable>
+          </>
         )}
 
         <TutorialTip id="diet-multi-photo" delay={1500} />

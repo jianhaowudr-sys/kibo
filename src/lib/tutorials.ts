@@ -77,6 +77,13 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'diet',
     icon: '🍽',
   },
+  'palm-reference': {
+    id: 'palm-reference',
+    title: '手掌參照更準',
+    body: '拍照時把手掌張開五指、平放食物旁同高度，勾選「✋ 拍照時手掌入鏡」AI 會用你的手掌大小 calibrate 份量，解決常見高估。先到「我 → 健康偏好」填手掌尺寸更精準。',
+    scope: 'diet',
+    icon: '✋',
+  },
   'food-library-add': {
     id: 'food-library-add',
     title: '建立常吃食物',

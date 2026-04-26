@@ -2,10 +2,16 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Switch, TextInput } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
+import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
 
 const CUP_PRESETS = [200, 250, 300, 350, 400];
 const BOTTLE_PRESETS = [500, 600, 750, 1000];
+
+// 手掌長度 11~25 cm 步進 0.5
+const PALM_LEN_VALUES = Array.from({ length: 29 }, (_, i) => 11 + i * 0.5);
+// 手掌寬度 6~12 cm 步進 0.5
+const PALM_WID_VALUES = Array.from({ length: 13 }, (_, i) => 6 + i * 0.5);
 
 export default function HealthSettings() {
   const palette = useThemePalette();
@@ -16,6 +22,7 @@ export default function HealthSettings() {
   const [bowelOpen, setBowelOpen] = useState(false);
   const [sleepOpen, setSleepOpen] = useState(false);
   const [periodOpen, setPeriodOpen] = useState(false);
+  const [bodyOpen, setBodyOpen] = useState(false);
 
   const Section = ({ title, open, onToggle, children }: any) => (
     <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
@@ -223,6 +230,54 @@ export default function HealthSettings() {
             />
           </>
         )}
+      </Section>
+
+      <Section title="📏 我的手掌尺寸（給 AI 估食物份量用）" open={bodyOpen} onToggle={() => setBodyOpen(!bodyOpen)}>
+        <Text style={{ color: palette.mute, fontSize: 11, lineHeight: 18, marginBottom: 12 }}>
+          填了之後，飲食拍照時可勾選「手掌入鏡」讓 AI 用你的手掌當比例尺，份量估算更精準（解決常見高估問題）。
+          {'\n\n'}
+          測量方式：張開五指平放在桌面，用尺量：
+          {'\n'}• 長：中指尖到手腕橫紋
+          {'\n'}• 寬：四指張開根部的橫寬（不含拇指）
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 16, justifyContent: 'center', marginBottom: 12 }}>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: palette.mute, fontSize: 11, marginBottom: 4 }}>長 (cm)</Text>
+            <WheelPicker
+              values={PALM_LEN_VALUES}
+              value={settings.body.palmLengthCm}
+              onChange={(v) => update({ body: { ...settings.body, palmLengthCm: v as number } })}
+              formatLabel={(v) => String(v)}
+              width={80}
+              itemHeight={36}
+              visibleCount={3}
+              activeFontSize={22}
+            />
+          </View>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: palette.mute, fontSize: 11, marginBottom: 4 }}>寬 (cm)</Text>
+            <WheelPicker
+              values={PALM_WID_VALUES}
+              value={settings.body.palmWidthCm}
+              onChange={(v) => update({ body: { ...settings.body, palmWidthCm: v as number } })}
+              formatLabel={(v) => String(v)}
+              width={80}
+              itemHeight={36}
+              visibleCount={3}
+              activeFontSize={22}
+            />
+          </View>
+        </View>
+
+        <View style={{ backgroundColor: palette.card, padding: 10, borderRadius: 8 }}>
+          <Text style={{ color: palette.text, fontSize: 12 }}>
+            ✋ 你的手掌：{settings.body.palmLengthCm} × {settings.body.palmWidthCm} cm
+          </Text>
+          <Text style={{ color: palette.mute, fontSize: 10, marginTop: 4 }}>
+            參考：成人男平均 18×9、女平均 16×8
+          </Text>
+        </View>
       </Section>
     </ScrollView>
   );
