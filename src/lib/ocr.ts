@@ -246,14 +246,41 @@ export async function readMealsFromMultiplePhotos(
     .map((r) => r.value);
 }
 
+export type MergeMode = 'sameMeal' | 'multipleMeals';
+
 /**
  * 把多張照片的判讀結果合併成單一 meal。
- * 同名 item 加總 calories/macros，name 唯一不重複。
+ *
+ * mode = 'sameMeal'（同一餐多角度）：
+ *  - totals 取所有照片的平均（避免 double-count 同樣食物）
+ *  - items 取資訊最豐富那張（item 數量最多）
+ *
+ * mode = 'multipleMeals'（不同餐合在一起算一個總量）：
+ *  - totals 直接相加
+ *  - items 同名相加、不同名累加
+ *  注意：呼叫端若要存成 N 筆 meal，應該不要呼叫此函數，直接 forEach 即可。
  */
-export function mergeMealReadings(readings: MealReading[]): MealReading {
+export function mergeMealReadings(readings: MealReading[], mode: MergeMode = 'sameMeal'): MealReading {
   if (readings.length === 0) {
     return { items: [], totalCalories: 0, totalProtein: 0, totalCarb: 0, totalFat: 0 };
   }
+  if (readings.length === 1) return readings[0];
+
+  if (mode === 'sameMeal') {
+    const avg = (key: keyof MealReading) =>
+      Math.round(readings.reduce((s, r) => s + ((r[key] as number) ?? 0), 0) / readings.length);
+    const richest = [...readings].sort((a, b) => (b.items?.length ?? 0) - (a.items?.length ?? 0))[0];
+    return {
+      title: readings.find((r) => r.title)?.title,
+      items: richest.items ?? [],
+      totalCalories: avg('totalCalories'),
+      totalProtein: avg('totalProtein'),
+      totalCarb: avg('totalCarb'),
+      totalFat: avg('totalFat'),
+    };
+  }
+
+  // multipleMeals fallback：相加
   const itemMap = new Map<string, MealReading['items'][number]>();
   for (const r of readings) {
     for (const it of r.items ?? []) {

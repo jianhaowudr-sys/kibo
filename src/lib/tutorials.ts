@@ -65,8 +65,8 @@ export const TUTORIALS: Record<string, Tutorial> = {
   },
   'diet-multi-photo': {
     id: 'diet-multi-photo',
-    title: '多張照片合併',
-    body: '可選最多 5 張照片，AI 各自分析後合併計算營養素，儲存前可手動修正各欄位。',
+    title: '多張照片要怎麼算',
+    body: '上傳多張時可選：📷「同一餐多角度」AI 取平均算一份（避免重複）；🍱「不同餐分別記」會存成多筆紀錄。',
     scope: 'diet',
     icon: '🍱',
   },

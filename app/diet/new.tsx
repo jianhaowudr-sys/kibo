@@ -5,7 +5,7 @@ import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
-import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, type MealReading } from '@/lib/ocr';
+import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, type MealReading, type MergeMode } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
@@ -52,6 +52,7 @@ export default function NewMeal() {
   const [aiParsed, setAiParsed] = useState(false);
   const [aiOriginalItems, setAiOriginalItems] = useState<MealItem[] | null>(null);
   const [perPhotoReadings, setPerPhotoReadings] = useState<MealReading[]>([]);
+  const [mergeMode, setMergeMode] = useState<MergeMode>('sameMeal');
   const lowPower = useLowPower();
 
   const extractTakenAt = (asset: any, source: 'camera' | 'library'): number | null => {
@@ -153,7 +154,8 @@ export default function NewMeal() {
           Alert.alert('判讀失敗', '所有照片都判讀失敗，請手動輸入');
           return;
         }
-        const merged = mergeMealReadings(readings);
+        // 同一餐 → 取平均合併成 1 份；不同餐 → 顯示總和供使用者預覽（儲存時拆 N 餐）
+        const merged = mergeMealReadings(readings, mergeMode);
         apply(merged);
       }
       haptic.success();
@@ -197,6 +199,30 @@ export default function NewMeal() {
   const save = async () => {
     haptic.tapMedium();
     try {
+      // 多張照片 + 不同餐模式 → 拆 N 餐分別存
+      if (photos.length > 1 && mergeMode === 'multipleMeals' && perPhotoReadings.length === photos.length) {
+        for (let i = 0; i < photos.length; i++) {
+          const r = perPhotoReadings[i];
+          await addMeal({
+            loggedAt: new Date() as any,
+            mealType,
+            title: r.title || null,
+            itemsJson: r.items.length > 0 ? JSON.stringify(r.items) : null,
+            caloriesKcal: r.totalCalories || null,
+            proteinG: r.totalProtein || null,
+            carbG: r.totalCarb || null,
+            fatG: r.totalFat || null,
+            photoUri: photos[i].uri,
+            note: i === 0 ? (note.trim() || null) : null,
+            aiParsed: true,
+          });
+        }
+        haptic.success();
+        router.back();
+        return;
+      }
+
+      // 單張或同一餐合併 → 1 筆
       await addMeal({
         loggedAt: new Date() as any,
         mealType,
@@ -292,6 +318,42 @@ export default function NewMeal() {
           </ScrollView>
         )}
 
+        {/* 多張照片時：選同一餐 or 不同餐 */}
+        {photos.length > 1 && (
+          <View className="bg-kibo-surface rounded-2xl p-3 border border-kibo-card mb-3">
+            <Text className="text-kibo-text font-semibold mb-2 text-sm">這幾張照片是…</Text>
+            <View className="flex-row gap-2 mb-2">
+              <Pressable
+                onPress={() => { haptic.tapLight(); setMergeMode('sameMeal'); setAiParsed(false); }}
+                className={`flex-1 py-3 rounded-xl items-center ${mergeMode === 'sameMeal' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+              >
+                <Text className={`font-semibold text-sm ${mergeMode === 'sameMeal' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                  📷 同一餐多角度
+                </Text>
+                <Text className={`text-[10px] mt-1 ${mergeMode === 'sameMeal' ? 'text-kibo-bg/80' : 'text-kibo-mute'}`}>
+                  算一份營養（取平均，避免重複）
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { haptic.tapLight(); setMergeMode('multipleMeals'); setAiParsed(false); }}
+                className={`flex-1 py-3 rounded-xl items-center ${mergeMode === 'multipleMeals' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+              >
+                <Text className={`font-semibold text-sm ${mergeMode === 'multipleMeals' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                  🍱 不同餐分別記
+                </Text>
+                <Text className={`text-[10px] mt-1 ${mergeMode === 'multipleMeals' ? 'text-kibo-bg/80' : 'text-kibo-mute'}`}>
+                  存成 {photos.length} 筆，各算各的
+                </Text>
+              </Pressable>
+            </View>
+            <Text className="text-kibo-mute text-[10px] leading-4">
+              {mergeMode === 'sameMeal'
+                ? '💡 同一個便當/盤子拍多張角度 → 選這個，AI 會把每張的估算取平均當作一份'
+                : '💡 早餐 + 午餐放在一起拍 → 選這個，每張會分別存成獨立一筆紀錄'}
+            </Text>
+          </View>
+        )}
+
         {photos.length > 0 && (
           <Pressable
             onPress={onAIParse}
@@ -307,7 +369,7 @@ export default function NewMeal() {
               </>
             ) : (
               <Text className="text-kibo-bg font-bold text-base">
-                🤖 AI 自動估營養 {photos.length > 1 && `(${photos.length} 張合併)`}
+                🤖 AI 自動估營養 {photos.length > 1 && (mergeMode === 'sameMeal' ? `(${photos.length} 張取平均)` : `(${photos.length} 張分開記)`)}
               </Text>
             )}
           </Pressable>
