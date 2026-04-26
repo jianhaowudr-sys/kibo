@@ -217,6 +217,70 @@ function mergeReadings(readings: MealReading[]): MealReading {
   };
 }
 
+/**
+ * 讀多張照片，回傳每張獨立的 MealReading 結果。
+ * @param photos base64 陣列
+ * @param options 同 readMealFromBase64；每張可獨立 temperature
+ * @param sequential 低負擔模式下序列執行，預設 false（並行）
+ */
+export async function readMealsFromMultiplePhotos(
+  photos: string[],
+  options: MealParseOptions = {},
+  sequential: boolean = false,
+): Promise<MealReading[]> {
+  if (sequential) {
+    const out: MealReading[] = [];
+    for (const p of photos) {
+      try {
+        const r = await readMealFromBase64(p, options);
+        out.push(r);
+      } catch (e) {
+        console.warn('Photo OCR failed', e);
+      }
+    }
+    return out;
+  }
+  const results = await Promise.allSettled(photos.map((p) => readMealFromBase64(p, options)));
+  return results
+    .filter((r): r is PromiseFulfilledResult<MealReading> => r.status === 'fulfilled')
+    .map((r) => r.value);
+}
+
+/**
+ * 把多張照片的判讀結果合併成單一 meal。
+ * 同名 item 加總 calories/macros，name 唯一不重複。
+ */
+export function mergeMealReadings(readings: MealReading[]): MealReading {
+  if (readings.length === 0) {
+    return { items: [], totalCalories: 0, totalProtein: 0, totalCarb: 0, totalFat: 0 };
+  }
+  const itemMap = new Map<string, MealReading['items'][number]>();
+  for (const r of readings) {
+    for (const it of r.items ?? []) {
+      const key = it.name?.trim() || '未知';
+      const existing = itemMap.get(key);
+      if (existing) {
+        existing.calories += it.calories || 0;
+        existing.protein += it.protein || 0;
+        existing.carb += it.carb || 0;
+        existing.fat += it.fat || 0;
+        if (!existing.portion && it.portion) existing.portion = it.portion;
+      } else {
+        itemMap.set(key, { ...it });
+      }
+    }
+  }
+  const items = Array.from(itemMap.values());
+  return {
+    title: readings.find((r) => r.title)?.title,
+    items,
+    totalCalories: items.reduce((s, x) => s + (x.calories || 0), 0),
+    totalProtein: items.reduce((s, x) => s + (x.protein || 0), 0),
+    totalCarb: items.reduce((s, x) => s + (x.carb || 0), 0),
+    totalFat: items.reduce((s, x) => s + (x.fat || 0), 0),
+  };
+}
+
 export async function readMealFromBase64(base64: string, options: MealParseOptions = {}): Promise<MealReading> {
   const memoryHint = await getMemoryHint(10);
 

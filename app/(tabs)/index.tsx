@@ -17,6 +17,8 @@ import { SleepEditModal } from '@/components/health/SleepEditModal';
 import { HelpIcon } from '@/components/common/TutorialTip';
 import { DailyTrinityCard } from '@/components/dashboard/DailyTrinityCard';
 import { PetMessageCard } from '@/components/dashboard/PetMessageCard';
+import { BodySummaryCard } from '@/components/dashboard/BodySummaryCard';
+import { NutritionSummaryCard } from '@/components/dashboard/NutritionSummaryCard';
 import { parseLayout } from '@/lib/dashboard';
 import type { Workout, EggType } from '@/db/schema';
 
@@ -103,6 +105,8 @@ export default function HomeScreen() {
 
   // dashboard layout
   const layoutJson = useAppStore((s) => s.dashboardLayoutJson);
+  const calendarViewMode = useAppStore((s) => s.calendarViewMode);
+  const setCalendarViewMode = useAppStore((s) => s.setCalendarViewMode);
   const layout = useMemo(() => parseLayout(layoutJson), [layoutJson]);
   const isCardVisible = (id: string) => {
     const c = layout.cards.find((x) => x.id === id);
@@ -180,6 +184,12 @@ export default function HomeScreen() {
         {/* 寵物訊息（依 layout） */}
         {isCardVisible('pet-message') && <PetMessageCard />}
 
+        {/* 體態快覽 */}
+        {isCardVisible('body-summary') && <BodySummaryCard />}
+
+        {/* 飲食快覽 */}
+        {isCardVisible('nutrition-summary') && <NutritionSummaryCard />}
+
         {/* 月曆 */}
         {isCardVisible('calendar') && (
           <MonthCalendar
@@ -188,6 +198,8 @@ export default function HomeScreen() {
             workoutDates={dateSet}
             selectedDate={selectedDate}
             onSelect={setSelectedDate}
+            viewMode={calendarViewMode}
+            onChangeViewMode={setCalendarViewMode}
           />
         )}
 

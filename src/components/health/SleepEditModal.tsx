@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Pressable, Modal } from 'react-native';
+import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { TutorialTip } from '@/components/common/TutorialTip';
+import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
 
 type Props = {
@@ -12,9 +13,16 @@ type Props = {
   promptMode?: boolean;
 };
 
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINS = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,10,...,55
+
+function nearestFiveMin(d: Date): number {
+  return Math.round(d.getMinutes() / 5) * 5 % 60;
+}
+
 /**
  * 睡眠編輯 + 起床 prompt 雙用 modal。
- * 用兩個簡化的「+/- 30 分」按鈕代替 sliders（RN 內建 slider 已棄用，避免額外 lib）。
+ * 上下床時間用 hour + minute 兩個 WheelPicker。
  */
 export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const palette = useThemePalette();
@@ -41,90 +49,115 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
     return { bedtime: bed, wake };
   }, [sleepLast, settings.sleep.targetBedtime, settings.sleep.targetWakeTime]);
 
-  const [bedtime, setBedtime] = useState(defaults.bedtime);
-  const [wake, setWake] = useState(defaults.wake);
+  const [bedH, setBedH] = useState(defaults.bedtime.getHours());
+  const [bedM, setBedM] = useState(nearestFiveMin(defaults.bedtime));
+  const [wakeH, setWakeH] = useState(defaults.wake.getHours());
+  const [wakeM, setWakeM] = useState(nearestFiveMin(defaults.wake));
   const [quality, setQuality] = useState(3);
 
   useEffect(() => {
     if (visible) {
-      setBedtime(defaults.bedtime);
-      setWake(defaults.wake);
+      setBedH(defaults.bedtime.getHours());
+      setBedM(nearestFiveMin(defaults.bedtime));
+      setWakeH(defaults.wake.getHours());
+      setWakeM(nearestFiveMin(defaults.wake));
       setQuality(sleepLast?.quality ?? 3);
     }
   }, [visible, defaults, sleepLast]);
 
-  const adjustBed = (deltaMin: number) => {
-    const next = new Date(bedtime); next.setMinutes(next.getMinutes() + deltaMin); setBedtime(next);
-    haptic.tapLight();
-  };
-  const adjustWake = (deltaMin: number) => {
-    const next = new Date(wake); next.setMinutes(next.getMinutes() + deltaMin); setWake(next);
-    haptic.tapLight();
+  // 計算實際 Date：bedtime 設為「昨天的 bedH:bedM」，wake 是「今天的 wakeH:wakeM」
+  const computeDates = () => {
+    const today = new Date(); today.setSeconds(0, 0);
+    const wake = new Date(today); wake.setHours(wakeH, wakeM, 0, 0);
+    const bed = new Date(wake); bed.setDate(bed.getDate() - 1); bed.setHours(bedH, bedM, 0, 0);
+    // 若 bedtime 比 wake 還晚（罕見：例如 bed 03:00, wake 05:00 同天）→ 把 bed 移回今天
+    if (bed.getTime() >= wake.getTime()) {
+      bed.setDate(bed.getDate() + 1);
+    }
+    return { bed, wake };
   };
 
-  const fmt = (d: Date) => `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  const dur = Math.max(0, Math.round((wake.getTime() - bedtime.getTime()) / 60000));
+  const { bed: bedDate, wake: wakeDate } = computeDates();
+  const dur = Math.max(0, Math.round((wakeDate.getTime() - bedDate.getTime()) / 60000));
   const dh = Math.floor(dur / 60);
   const dm = dur % 60;
 
   const onSave = async () => {
     haptic.success();
-    await upsertSleep({ bedtimeAt: bedtime.getTime(), wakeAt: wake.getTime(), quality });
+    await upsertSleep({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality });
     onClose();
   };
+
+  const HMRow = ({ label, h, m, setH, setM }: any) => (
+    <View style={{ marginBottom: 14 }}>
+      <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <WheelPicker
+          values={HOURS}
+          value={h}
+          onChange={setH}
+          formatLabel={(v) => String(v).padStart(2, '0')}
+          width={70}
+          itemHeight={36}
+          visibleCount={3}
+        />
+        <Text style={{ color: palette.text, fontSize: 22, fontWeight: '700' }}>:</Text>
+        <WheelPicker
+          values={MINS}
+          value={m}
+          onChange={setM}
+          formatLabel={(v) => String(v).padStart(2, '0')}
+          width={70}
+          itemHeight={36}
+          visibleCount={3}
+        />
+      </View>
+    </View>
+  );
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-        <View style={{ backgroundColor: palette.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+        <View style={{ backgroundColor: palette.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, maxHeight: '90%' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700', flex: 1 }}>
               {promptMode ? '昨晚睡得怎樣？' : '編輯睡眠'}
             </Text>
             <Pressable onPress={onClose} hitSlop={8}><Text style={{ color: palette.mute, fontSize: 22 }}>✕</Text></Pressable>
           </View>
 
-          <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>上床時間</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-            <Pressable onPress={() => adjustBed(-30)} style={btn(palette)}><Text style={btnText(palette)}>−30</Text></Pressable>
-            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' }}>{fmt(bedtime)}</Text>
-            <Pressable onPress={() => adjustBed(+30)} style={btn(palette)}><Text style={btnText(palette)}>+30</Text></Pressable>
-          </View>
+          <ScrollView>
+            <HMRow label="上床時間" h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
+            <HMRow label="起床時間" h={wakeH} m={wakeM} setH={setWakeH} setM={setWakeM} />
 
-          <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>起床時間</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 }}>
-            <Pressable onPress={() => adjustWake(-30)} style={btn(palette)}><Text style={btnText(palette)}>−30</Text></Pressable>
-            <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700', flex: 1, textAlign: 'center' }}>{fmt(wake)}</Text>
-            <Pressable onPress={() => adjustWake(+30)} style={btn(palette)}><Text style={btnText(palette)}>+30</Text></Pressable>
-          </View>
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>時長</Text>
+            <Text style={{ color: palette.primary, fontSize: 24, fontWeight: '700', marginBottom: 16 }}>{dh}h {dm}m</Text>
 
-          <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>時長</Text>
-          <Text style={{ color: palette.primary, fontSize: 22, fontWeight: '700', marginBottom: 16 }}>{dh}h {dm}m</Text>
-
-          <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>感覺</Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-            {[1, 2, 3, 4, 5].map((n) => {
-              const emoji = ['😴', '😐', '🙂', '😊', '⚡'][n - 1];
-              const active = quality === n;
-              return (
-                <Pressable
-                  key={n}
-                  onPress={() => { haptic.tapLight(); setQuality(n); }}
-                  style={{
-                    flex: 1, alignItems: 'center', paddingVertical: 8, marginHorizontal: 2,
-                    borderRadius: 10,
-                    backgroundColor: active ? palette.primary : palette.card,
-                  }}
-                >
-                  <Text style={{ fontSize: 22 }}>{emoji}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>感覺</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+              {[1, 2, 3, 4, 5].map((n) => {
+                const emoji = ['😴', '😐', '🙂', '😊', '⚡'][n - 1];
+                const active = quality === n;
+                return (
+                  <Pressable
+                    key={n}
+                    onPress={() => { haptic.tapLight(); setQuality(n); }}
+                    style={{
+                      flex: 1, alignItems: 'center', paddingVertical: 8, marginHorizontal: 2,
+                      borderRadius: 10,
+                      backgroundColor: active ? palette.primary : palette.card,
+                    }}
+                  >
+                    <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </ScrollView>
 
           <Pressable
             onPress={onSave}
-            style={{ backgroundColor: palette.primary, paddingVertical: 14, borderRadius: 14, alignItems: 'center' }}
+            style={{ backgroundColor: palette.primary, paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 8 }}
           >
             <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 16 }}>記錄</Text>
           </Pressable>
@@ -134,8 +167,5 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
     </Modal>
   );
 }
-
-const btn = (p: any) => ({ backgroundColor: p.card, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10 });
-const btnText = (p: any) => ({ color: p.text, fontWeight: '600' as const });
 
 export default SleepEditModal;

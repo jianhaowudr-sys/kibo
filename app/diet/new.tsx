@@ -5,12 +5,17 @@ import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
-import { readMealFromBase64, type MealReading } from '@/lib/ocr';
+import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, type MealReading } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
+import { useLowPower } from '@/hooks/useLowPower';
+import { TutorialTip } from '@/components/common/TutorialTip';
 import type { MealType, MealItem } from '@/db/schema';
+
+type PhotoSlot = { uri: string; base64: string; takenAt: number | null };
+const MAX_PHOTOS = 5;
 
 const MEAL_OPTIONS: { code: MealType; label: string; emoji: string }[] = [
   { code: 'breakfast', label: '早餐', emoji: '🌅' },
@@ -42,12 +47,23 @@ export default function NewMeal() {
   const [carb, setCarb] = useState('');
   const [fat, setFat] = useState('');
   const [note, setNote] = useState('');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
-  const [photoTakenAt, setPhotoTakenAt] = useState<number | null>(null);
+  const [photos, setPhotos] = useState<PhotoSlot[]>([]);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [aiParsed, setAiParsed] = useState(false);
   const [aiOriginalItems, setAiOriginalItems] = useState<MealItem[] | null>(null);
+  const [perPhotoReadings, setPerPhotoReadings] = useState<MealReading[]>([]);
+  const lowPower = useLowPower();
+
+  const extractTakenAt = (asset: any, source: 'camera' | 'library'): number | null => {
+    const exif: any = asset.exif;
+    const taken = exif?.DateTimeOriginal || exif?.DateTime;
+    if (taken && typeof taken === 'string') {
+      const fixed = taken.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+      const t = Date.parse(fixed);
+      return isNaN(t) ? Date.now() : t;
+    }
+    return source === 'camera' ? Date.now() : null;
+  };
 
   const pick = async (source: 'camera' | 'library') => {
     haptic.tapLight();
@@ -59,35 +75,52 @@ export default function NewMeal() {
       return;
     }
 
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      Alert.alert(`最多 ${MAX_PHOTOS} 張`);
+      return;
+    }
+
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, base64: true, exif: true })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, base64: true, exif: true });
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          quality: 0.8,
+          base64: true,
+          exif: true,
+          allowsMultipleSelection: source === 'library',
+          selectionLimit: remaining,
+        });
 
-    if (result.canceled || !result.assets?.[0]) return;
-    const a = result.assets[0];
-    setPhotoUri(a.uri);
-    setPhotoBase64(a.base64 ?? null);
-    const exif: any = a.exif;
-    const taken = exif?.DateTimeOriginal || exif?.DateTime;
-    if (taken && typeof taken === 'string') {
-      const fixed = taken.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
-      const t = Date.parse(fixed);
-      setPhotoTakenAt(isNaN(t) ? Date.now() : t);
-    } else {
-      setPhotoTakenAt(source === 'camera' ? Date.now() : null);
-    }
+    if (result.canceled || !result.assets || result.assets.length === 0) return;
+    const newSlots: PhotoSlot[] = result.assets.slice(0, remaining).map((a: any) => ({
+      uri: a.uri,
+      base64: a.base64 ?? '',
+      takenAt: extractTakenAt(a, source),
+    }));
+    setPhotos((prev) => [...prev, ...newSlots]);
+    // 加新照片就清掉之前的 AI 結果（避免混淆）
+    setAiParsed(false);
+    setPerPhotoReadings([]);
   };
 
   const onChoosePhoto = () => {
-    Alert.alert('選擇照片', '', [
+    Alert.alert('選擇照片', `最多 ${MAX_PHOTOS} 張`, [
       { text: '拍照', onPress: () => pick('camera') },
       { text: '從相簿選', onPress: () => pick('library') },
       { text: '取消', style: 'cancel' },
     ]);
   };
 
+  const removePhoto = (idx: number) => {
+    haptic.tapLight();
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    setPerPhotoReadings([]);
+    setAiParsed(false);
+  };
+
   const onAIParse = async () => {
-    if (!photoBase64) {
+    if (photos.length === 0) {
       Alert.alert('請先選照片');
       return;
     }
@@ -103,10 +136,26 @@ export default function NewMeal() {
     setOcrLoading(true);
     haptic.tapMedium();
     try {
-      const reading = await readMealFromBase64(photoBase64, {
-        capturedAt: photoTakenAt ?? Date.now(),
-      });
-      apply(reading);
+      if (photos.length === 1) {
+        const reading = await readMealFromBase64(photos[0].base64, {
+          capturedAt: photos[0].takenAt ?? Date.now(),
+        });
+        setPerPhotoReadings([reading]);
+        apply(reading);
+      } else {
+        const readings = await readMealsFromMultiplePhotos(
+          photos.map((p) => p.base64),
+          {},
+          lowPower, // 低負擔模式 → 序列
+        );
+        setPerPhotoReadings(readings);
+        if (readings.length === 0) {
+          Alert.alert('判讀失敗', '所有照片都判讀失敗，請手動輸入');
+          return;
+        }
+        const merged = mergeMealReadings(readings);
+        apply(merged);
+      }
       haptic.success();
     } catch (e: any) {
       haptic.error();
@@ -157,7 +206,7 @@ export default function NewMeal() {
         proteinG: protein ? Number(protein) : null,
         carbG: carb ? Number(carb) : null,
         fatG: fat ? Number(fat) : null,
-        photoUri,
+        photoUri: photos[0]?.uri ?? null,
         note: note.trim() || null,
         aiParsed,
       });
@@ -195,41 +244,55 @@ export default function NewMeal() {
           ))}
         </View>
 
-        <Text className="text-kibo-mute text-xs mb-2">食物照片</Text>
-        {photoUri ? (
-          <View className="mb-3">
-            <Image source={{ uri: photoUri }} style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 16 }} resizeMode="cover" />
-            <View className="flex-row gap-2 mt-2">
-              <Pressable onPress={onChoosePhoto} className="flex-1 bg-kibo-surface border border-kibo-card rounded-xl py-2">
-                <Text className="text-kibo-text text-center text-sm">更換</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setPhotoUri(null);
-                  setPhotoBase64(null);
-                }}
-                className="bg-kibo-surface border border-kibo-danger rounded-xl py-2 px-4"
-              >
-                <Text className="text-kibo-danger text-sm">移除</Text>
-              </Pressable>
-            </View>
-          </View>
-        ) : (
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <Text className="text-kibo-mute text-xs">食物照片 ({photos.length}/{MAX_PHOTOS})</Text>
+          {photos.length > 0 && photos.length < MAX_PHOTOS && (
+            <Pressable onPress={onChoosePhoto}>
+              <Text className="text-kibo-primary text-xs">＋ 加照片</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {photos.length === 0 ? (
           <>
             <Pressable
               onPress={onChoosePhoto}
               className="bg-kibo-surface border-2 border-dashed border-kibo-card rounded-2xl py-10 mb-2 items-center"
             >
               <Text className="text-4xl mb-2">📷</Text>
-              <Text className="text-kibo-primary font-semibold">拍食物 / 從相簿選</Text>
+              <Text className="text-kibo-primary font-semibold">拍食物 / 從相簿選（最多 5 張）</Text>
             </Pressable>
             <Text className="text-kibo-mute text-[10px] text-center mb-3">
               💡 盤子旁放手機 / AirPods / 硬幣當比例尺，AI 估份量更準
             </Text>
           </>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3" contentContainerStyle={{ gap: 8 }}>
+            {photos.map((p, i) => {
+              const reading = perPhotoReadings[i];
+              return (
+                <View key={i} style={{ width: 120 }}>
+                  <View style={{ position: 'relative' }}>
+                    <Image source={{ uri: p.uri }} style={{ width: 120, height: 120, borderRadius: 12 }} resizeMode="cover" />
+                    <Pressable
+                      onPress={() => removePhoto(i)}
+                      style={{ position: 'absolute', top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>✕</Text>
+                    </Pressable>
+                  </View>
+                  {reading && (
+                    <Text className="text-kibo-mute text-[10px] mt-1 text-center">
+                      {reading.totalCalories} kcal
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
         )}
 
-        {photoBase64 && (
+        {photos.length > 0 && (
           <Pressable
             onPress={onAIParse}
             disabled={ocrLoading}
@@ -238,13 +301,19 @@ export default function NewMeal() {
             {ocrLoading ? (
               <>
                 <ActivityIndicator color="#F1F5F9" />
-                <Text className="text-kibo-text font-bold">AI 精準估算中...（約 5-8 秒）</Text>
+                <Text className="text-kibo-text font-bold">
+                  AI 估算中... {photos.length > 1 ? `(${photos.length} 張${lowPower ? ' 序列' : ' 並行'})` : ''}
+                </Text>
               </>
             ) : (
-              <Text className="text-kibo-bg font-bold text-base">🤖 AI 自動估營養</Text>
+              <Text className="text-kibo-bg font-bold text-base">
+                🤖 AI 自動估營養 {photos.length > 1 && `(${photos.length} 張合併)`}
+              </Text>
             )}
           </Pressable>
         )}
+
+        <TutorialTip id="diet-multi-photo" delay={1500} />
 
         <Text className="text-kibo-mute text-xs mb-2">名稱（可選）</Text>
         <TextInput

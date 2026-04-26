@@ -47,6 +47,8 @@ type State = {
   todayNutrition: { calories: number; protein: number; carb: number; fat: number; count: number };
   themeMode: ThemeMode;
   themeStyle: ThemeStyle;
+  lowPowerMode: boolean;
+  calendarViewMode: 'month' | 'week' | 'last7days';
   authSession: Session | null;
   authLoading: boolean;
 
@@ -125,6 +127,10 @@ type Actions = {
   loadThemeMode: () => Promise<void>;
   setThemeStyle: (style: ThemeStyle) => Promise<void>;
   loadThemeStyle: () => Promise<void>;
+  setLowPowerMode: (v: boolean) => Promise<void>;
+  loadLowPowerMode: () => Promise<void>;
+  setCalendarViewMode: (m: 'month' | 'week' | 'last7days') => Promise<void>;
+  loadCalendarViewMode: () => Promise<void>;
 
   // 健康模組 actions
   refreshHealth: () => Promise<void>;
@@ -197,6 +203,8 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   todayNutrition: { calories: 0, protein: 0, carb: 0, fat: 0, count: 0 },
   themeMode: 'dark' as ThemeMode,
   themeStyle: 'modern' as ThemeStyle,
+  lowPowerMode: false,
+  calendarViewMode: 'month' as 'month' | 'week' | 'last7days',
   authSession: null,
   waterToday: [],
   bowelToday: [],
@@ -626,6 +634,30 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const { getThemeStyle } = await import('@/lib/theme');
     const style = await getThemeStyle();
     set({ themeStyle: style });
+  },
+
+  setLowPowerMode: async (v) => {
+    set({ lowPowerMode: v });
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.setItem('@kibo/low_power', v ? '1' : '0');
+  },
+
+  loadLowPowerMode: async () => {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const v = await AsyncStorage.getItem('@kibo/low_power');
+    set({ lowPowerMode: v === '1' });
+  },
+
+  setCalendarViewMode: async (m) => {
+    set({ calendarViewMode: m });
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    await AsyncStorage.setItem('@kibo/calendar_view', m);
+  },
+
+  loadCalendarViewMode: async () => {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const v = await AsyncStorage.getItem('@kibo/calendar_view');
+    if (v === 'month' || v === 'week' || v === 'last7days') set({ calendarViewMode: v });
   },
 
   // ===== 健康模組 =====

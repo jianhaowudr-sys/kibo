@@ -8,7 +8,9 @@ import * as haptic from '@/lib/haptic';
 import { TutorialTip } from '@/components/common/TutorialTip';
 import { BristolPicker } from './BristolPicker';
 
-export function BowelCard() {
+type Props = { mode?: 'compact' | 'full' };
+
+export function BowelCard({ mode = 'full' }: Props) {
   const palette = useThemePalette();
   const router = useRouter();
   const bowelToday = useAppStore((s) => s.bowelToday);
@@ -31,6 +33,44 @@ export function BowelCard() {
     setEditingId(null);
     setPickerOpen(true);
   };
+
+  if (mode === 'compact') {
+    return (
+      <>
+        <Pressable
+          onLongPress={() => router.push('/health/bowel' as any)}
+          delayLongPress={LONG_PRESS_MS}
+          style={{
+            flex: 1, backgroundColor: palette.surface, borderRadius: 16,
+            padding: 12, borderWidth: 1, borderColor: palette.card,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+            <Text style={{ fontSize: 18, marginRight: 6 }}>💩</Text>
+            <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+              今日 {bowelToday.length} 次
+            </Text>
+          </View>
+          <Pressable
+            onPress={onTap}
+            style={{ backgroundColor: palette.primary, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+          >
+            <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 13 }}>+ 排便</Text>
+          </Pressable>
+        </Pressable>
+        <BristolPicker
+          visible={pickerOpen || editingId !== null}
+          initial={editingId && last ? { bristol: last.bristol, hasBlood: !!last.hasBlood, hasPain: !!last.hasPain, notes: last.notes ?? '' } : undefined}
+          onClose={() => { setPickerOpen(false); setEditingId(null); }}
+          onSave={async (data) => {
+            if (editingId) await upsertBowel(editingId, { bristol: data.bristol, hasBlood: data.hasBlood ? 1 : 0, hasPain: data.hasPain ? 1 : 0, notes: data.notes });
+            else await addBowel({ bristol: data.bristol, hasBlood: data.hasBlood ? 1 : 0, hasPain: data.hasPain ? 1 : 0, notes: data.notes });
+            setPickerOpen(false); setEditingId(null);
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <>

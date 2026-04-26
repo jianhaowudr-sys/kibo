@@ -18,18 +18,20 @@ export function HealthRow() {
 
   const cards = useMemo(() => {
     const layout = parseLayout(layoutJson);
-    const map: Record<string, React.ReactNode> = {
-      'health-water': <WaterCard key="water" />,
-      'health-bowel': <BowelCard key="bowel" />,
-      'health-sleep': <SleepCard key="sleep" />,
-      'health-period': <PeriodCard key="period" />,
-    };
-    return layout.cards
+    const cardsWithMode = layout.cards
       .filter((c) => c.id.startsWith('health-') && c.visible)
       .filter((c) => c.id !== 'health-period' || periodEnabled)
-      .sort((a, b) => a.order - b.order)
-      .map((c) => map[c.id])
-      .filter(Boolean);
+      .sort((a, b) => a.order - b.order);
+    return cardsWithMode.map((c) => {
+      const m = (c.size === 'compact' ? 'compact' : 'full') as 'compact' | 'full';
+      switch (c.id) {
+        case 'health-water': return <WaterCard key="water" mode={m} />;
+        case 'health-bowel': return <BowelCard key="bowel" mode={m} />;
+        case 'health-sleep': return <SleepCard key="sleep" mode={m} />;
+        case 'health-period': return <PeriodCard key="period" mode={m} />;
+        default: return null;
+      }
+    }).filter(Boolean);
   }, [layoutJson, periodEnabled]);
 
   if (cards.length === 0) return null;

@@ -13,7 +13,9 @@ export type DashboardCardId =
   | 'health-period'
   | 'today-workouts'
   | 'today-meals'
-  | 'pet-message';
+  | 'pet-message'
+  | 'body-summary'
+  | 'nutrition-summary';
 
 export type DashboardCard = {
   id: DashboardCardId;
@@ -38,6 +40,8 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
     { id: 'pet-message', visible: false, order: 7, size: 'full' },
     { id: 'today-workouts', visible: true, order: 8, size: 'full' },
     { id: 'today-meals', visible: false, order: 9, size: 'full' },
+    { id: 'body-summary', visible: false, order: 10, size: 'compact' },
+    { id: 'nutrition-summary', visible: false, order: 11, size: 'compact' },
   ],
 };
 
@@ -52,6 +56,8 @@ export const CARD_LABELS: Record<DashboardCardId, string> = {
   'pet-message': '💬 寵物訊息',
   'today-workouts': '💪 今日訓練',
   'today-meals': '🍱 今日飲食',
+  'body-summary': '🏋️ 體態快覽',
+  'nutrition-summary': '🥗 飲食快覽',
 };
 
 export function parseLayout(raw: string | null): DashboardLayout {

@@ -33,6 +33,8 @@ export default function RootLayout() {
   const bootstrap = useAppStore((s) => s.bootstrap);
   const loadThemeMode = useAppStore((s) => s.loadThemeMode);
   const loadThemeStyle = useAppStore((s) => s.loadThemeStyle);
+  const loadLowPowerMode = useAppStore((s) => s.loadLowPowerMode);
+  const loadCalendarViewMode = useAppStore((s) => s.loadCalendarViewMode);
   const loadAuthSession = useAppStore((s) => s.loadAuthSession);
   const hydrateTutorial = useTutorialStore((s) => s.hydrate);
   const themeMode = useAppStore((s) => s.themeMode);
@@ -70,6 +72,8 @@ export default function RootLayout() {
         await bootstrap();
         await loadThemeMode();
         await loadThemeStyle();
+        await loadLowPowerMode();
+        await loadCalendarViewMode();
         await hydrateTutorial();
         await loadAuthSession();
         // 第一次啟動 → 進 onboarding

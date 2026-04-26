@@ -21,17 +21,10 @@ export type Tutorial = {
 };
 
 export const TUTORIALS: Record<string, Tutorial> = {
-  'water-card-hold': {
-    id: 'water-card-hold',
-    title: '按住可累積',
-    body: '長按 +100 按鈕會像加油槍一樣連續累積，放開即記錄總量。',
-    scope: 'home',
-    icon: '💧',
-  },
-  'water-card-merge': {
-    id: 'water-card-merge',
-    title: '連點會合併',
-    body: '2 秒內連點 +100 會合併成單筆紀錄，撤銷時整批一起消失。',
+  'water-wheel-pick': {
+    id: 'water-wheel-pick',
+    title: '滾輪選量',
+    body: '上下滑動數字選擇喝水量（50ml 步進），左右兩顆按鈕一鍵跳到杯/瓶量，按「記錄」送出。',
     scope: 'home',
     icon: '💧',
   },
@@ -41,6 +34,34 @@ export const TUTORIALS: Record<string, Tutorial> = {
     body: '長按任一健康卡片可進入該項目的歷史紀錄與圖表。',
     scope: 'home',
     icon: '📊',
+  },
+  'card-compact-mode': {
+    id: 'card-compact-mode',
+    title: '精簡模式',
+    body: '在「自訂首頁」可把卡片切到精簡模式，只剩一顆快速記錄按鈕，省空間。',
+    scope: 'home',
+    icon: '⚡',
+  },
+  'diet-multi-photo': {
+    id: 'diet-multi-photo',
+    title: '多張照片合併',
+    body: '可選最多 5 張照片，AI 各自分析後合併計算營養素，儲存前可手動修正各欄位。',
+    scope: 'diet',
+    icon: '🍱',
+  },
+  'calendar-view-mode': {
+    id: 'calendar-view-mode',
+    title: '月曆切檢視',
+    body: '月曆上方可切換「月 / 週 / 近 7 天」三種檢視，選你最常看的。',
+    scope: 'home',
+    icon: '📅',
+  },
+  'low-power-mode': {
+    id: 'low-power-mode',
+    title: '低負擔模式',
+    body: '卡頓時可在「我 → 外觀」打開低負擔模式，動畫與滾輪會簡化，但記錄功能不變。',
+    scope: 'me',
+    icon: '⚡',
   },
   'bowel-longpress-detail': {
     id: 'bowel-longpress-detail',
@@ -80,7 +101,7 @@ export const TUTORIALS: Record<string, Tutorial> = {
   'wake-prompt': {
     id: 'wake-prompt',
     title: '起床記錄',
-    body: '滑桿預設是你過去 14 天的中位數，符合直接點記錄即可。',
+    body: '上床/起床時間用兩個滾輪（小時 + 分鐘）滑動選擇，預設是你的歷史中位數。',
     scope: 'sleep',
     icon: '😴',
   },

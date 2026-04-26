@@ -9,7 +9,9 @@ import * as haptic from '@/lib/haptic';
 import { TutorialTip } from '@/components/common/TutorialTip';
 import { format } from 'date-fns';
 
-export function PeriodCard() {
+type Props = { mode?: 'compact' | 'full' };
+
+export function PeriodCard({ mode = 'full' }: Props) {
   const palette = useThemePalette();
   const router = useRouter();
   const periodRecent = useAppStore((s) => s.periodRecent);
@@ -35,6 +37,31 @@ export function PeriodCard() {
   };
 
   const bg = pred.isPmsWindow ? '#ffd0e0' : palette.surface;
+
+  if (mode === 'compact') {
+    const onCompactTap = pred.isOnPeriod ? logToday : startCycle;
+    const label = pred.isOnPeriod ? `第 ${pred.dayOfPeriod} 天 · 記錄` : '🌸 開始 / 記錄';
+    return (
+      <Pressable
+        onLongPress={() => router.push('/health/period' as any)}
+        delayLongPress={LONG_PRESS_MS}
+        style={{ flex: 1, backgroundColor: bg, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: palette.card }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+          <Text style={{ fontSize: 18, marginRight: 6 }}>🌸</Text>
+          <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+            {pred.isOnPeriod ? `第 ${pred.dayOfPeriod} 天` : pred.daysUntilNext != null ? `${pred.daysUntilNext} 天後` : '開始追蹤'}
+          </Text>
+        </View>
+        <Pressable
+          onPress={onCompactTap}
+          style={{ backgroundColor: palette.accent, paddingVertical: 10, borderRadius: 8, alignItems: 'center' }}
+        >
+          <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 12 }}>{label}</Text>
+        </Pressable>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
