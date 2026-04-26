@@ -44,8 +44,8 @@ export const TUTORIALS: Record<string, Tutorial> = {
   },
   'water-wheel-pick': {
     id: 'water-wheel-pick',
-    title: '喝水滾輪',
-    body: '滑動數字選量（50ml 步進）→ 點「設為杯/瓶」可跳到該量 → 按下「記錄」送出。',
+    title: '記錄喝水',
+    body: '首頁喝水卡顯示達成百分比；點「📝 記錄」開記錄頁，滑動數字選量（50ml 步進）或按「設為杯/瓶」捷徑，再按下記錄完成。',
     scope: 'home',
     icon: '💧',
   },
@@ -69,6 +69,20 @@ export const TUTORIALS: Record<string, Tutorial> = {
     body: '上傳多張時可選：📷「同一餐多角度」AI 取平均算一份（避免重複）；🍱「不同餐分別記」會存成多筆紀錄。',
     scope: 'diet',
     icon: '🍱',
+  },
+  'food-library-pick': {
+    id: 'food-library-pick',
+    title: '食物庫快速選',
+    body: '飲食記錄頁右側「🍽 食物庫」可挑選自己存過的常吃食物，選份數一鍵加入，省下拍照等 AI 的時間。',
+    scope: 'diet',
+    icon: '🍽',
+  },
+  'food-library-add': {
+    id: 'food-library-add',
+    title: '建立常吃食物',
+    body: '我 → 🍽 我的食物庫 → 新增：拍照讓 AI 算或手動填營養素。下次同食物直接點選不必再拍。',
+    scope: 'me',
+    icon: '🍽',
   },
   'calendar-view-mode': {
     id: 'calendar-view-mode',

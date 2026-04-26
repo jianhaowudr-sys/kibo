@@ -881,6 +881,15 @@ export default function MeScreen() {
               <Text className="text-kibo-mute">▶</Text>
             </Pressable>
 
+            {/* 🍽 我的食物庫 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/food-library' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">🍽 我的食物庫</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
             {/* 🙋 個人資料 */}
             <Panel
               id="profile"

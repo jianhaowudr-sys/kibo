@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
@@ -6,11 +6,8 @@ import { evaluateTrinity } from '@/lib/daily_trinity';
 
 export function DailyTrinityCard() {
   const palette = useThemePalette();
-  const todayWorkouts = useAppStore((s) => s.recentWorkouts.filter((w: any) => {
-    const d = new Date(w.startedAt);
-    const today = new Date();
-    return d.toDateString() === today.toDateString();
-  }));
+  // 注意：selector 只回傳原 reference，filter/map 一律放元件內 useMemo（避免無限 re-render）
+  const recentWorkouts = useAppStore((s) => s.recentWorkouts);
   const todayMeals = useAppStore((s) => s.todayMeals);
   const todayWater = useAppStore((s) => s.waterToday);
   const todayBowel = useAppStore((s) => s.bowelToday);
@@ -20,12 +17,23 @@ export function DailyTrinityCard() {
   const user = useAppStore((s) => s.user);
   const tokens = useAppStore((s) => s.streakFreezeTokens);
 
-  // 今日的 periodDays
-  const todayKey = (() => {
+  const todayWorkouts = useMemo(
+    () => recentWorkouts.filter((w: any) => {
+      const d = new Date(w.startedAt);
+      const today = new Date();
+      return d.toDateString() === today.toDateString();
+    }),
+    [recentWorkouts]
+  );
+
+  const todayKey = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
-  const todayPeriodDays = periodRecent.filter((p) => p.dayKey === todayKey);
+  }, []);
+  const todayPeriodDays = useMemo(
+    () => periodRecent.filter((p) => p.dayKey === todayKey),
+    [periodRecent, todayKey]
+  );
 
   const trinity = evaluateTrinity({
     todayWorkouts: todayWorkouts as any,

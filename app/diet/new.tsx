@@ -12,6 +12,7 @@ import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import { useLowPower } from '@/hooks/useLowPower';
 import { TutorialTip } from '@/components/common/TutorialTip';
+import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
 import type { MealType, MealItem } from '@/db/schema';
 
 type PhotoSlot = { uri: string; base64: string; takenAt: number | null };
@@ -53,7 +54,18 @@ export default function NewMeal() {
   const [aiOriginalItems, setAiOriginalItems] = useState<MealItem[] | null>(null);
   const [perPhotoReadings, setPerPhotoReadings] = useState<MealReading[]>([]);
   const [mergeMode, setMergeMode] = useState<MergeMode>('sameMeal');
+  const [pickerOpen, setPickerOpen] = useState(false);
   const lowPower = useLowPower();
+
+  const onPickFromLibrary = (item: MealItem) => {
+    const newItems = [...items, item];
+    setItems(newItems);
+    setCalories(String(newItems.reduce((s, x) => s + (x.calories || 0), 0)));
+    setProtein(String(Math.round(newItems.reduce((s, x) => s + (x.protein || 0), 0) * 10) / 10));
+    setCarb(String(Math.round(newItems.reduce((s, x) => s + (x.carb || 0), 0) * 10) / 10));
+    setFat(String(Math.round(newItems.reduce((s, x) => s + (x.fat || 0), 0) * 10) / 10));
+    haptic.success();
+  };
 
   const extractTakenAt = (asset: any, source: 'camera' | 'library'): number | null => {
     const exif: any = asset.exif;
@@ -281,15 +293,26 @@ export default function NewMeal() {
 
         {photos.length === 0 ? (
           <>
-            <Pressable
-              onPress={onChoosePhoto}
-              className="bg-kibo-surface border-2 border-dashed border-kibo-card rounded-2xl py-10 mb-2 items-center"
-            >
-              <Text className="text-4xl mb-2">📷</Text>
-              <Text className="text-kibo-primary font-semibold">拍食物 / 從相簿選（最多 5 張）</Text>
-            </Pressable>
+            <View className="flex-row gap-2 mb-2">
+              <Pressable
+                onPress={onChoosePhoto}
+                className="flex-1 bg-kibo-accent rounded-2xl py-8 items-center"
+              >
+                <Text className="text-3xl mb-1">📷</Text>
+                <Text className="text-kibo-bg font-bold">拍食物 + AI</Text>
+                <Text className="text-kibo-bg/70 text-[10px] mt-1">最多 5 張</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { haptic.tapLight(); setPickerOpen(true); }}
+                className="flex-1 bg-kibo-surface border-2 border-kibo-card rounded-2xl py-8 items-center"
+              >
+                <Text className="text-3xl mb-1">🍽</Text>
+                <Text className="text-kibo-text font-bold">食物庫</Text>
+                <Text className="text-kibo-mute text-[10px] mt-1">挑選常吃食物</Text>
+              </Pressable>
+            </View>
             <Text className="text-kibo-mute text-[10px] text-center mb-3">
-              💡 盤子旁放手機 / AirPods / 硬幣當比例尺，AI 估份量更準
+              💡 常吃的食物（高蛋白、飯糰）建到食物庫後 → 直接挑選不必拍照
             </Text>
           </>
         ) : (
@@ -376,6 +399,11 @@ export default function NewMeal() {
         )}
 
         <TutorialTip id="diet-multi-photo" delay={1500} />
+        <FoodPickerModal
+          visible={pickerOpen}
+          onClose={() => setPickerOpen(false)}
+          onPick={onPickFromLibrary}
+        />
 
         <Text className="text-kibo-mute text-xs mb-2">名稱（可選）</Text>
         <TextInput

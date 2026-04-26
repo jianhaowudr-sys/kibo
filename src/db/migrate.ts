@@ -224,6 +224,23 @@ CREATE TABLE IF NOT EXISTS trinity_completions (
   consecutive_days INTEGER NOT NULL DEFAULT 1,
   completed_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS custom_foods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  emoji TEXT NOT NULL DEFAULT '🍽',
+  calories_kcal INTEGER NOT NULL DEFAULT 0,
+  protein_g REAL NOT NULL DEFAULT 0,
+  carb_g REAL NOT NULL DEFAULT 0,
+  fat_g REAL NOT NULL DEFAULT 0,
+  portion TEXT,
+  photo_uri TEXT,
+  source TEXT NOT NULL DEFAULT 'manual',
+  use_count INTEGER NOT NULL DEFAULT 0,
+  last_used_at INTEGER,
+  created_at INTEGER NOT NULL
+);
 `;
 
 async function hasColumn(table: string, column: string): Promise<boolean> {

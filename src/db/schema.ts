@@ -194,6 +194,25 @@ export const periodDays = sqliteTable('period_days', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+// 自訂食物庫（plan v5）— 使用者建立的常吃食物快速選用
+export const customFoods = sqliteTable('custom_foods', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  name: text('name').notNull(),
+  emoji: text('emoji').notNull().default('🍽'),
+  // 一份的營養素（使用者紀錄時可選 1/0.5/2 等倍數）
+  caloriesKcal: integer('calories_kcal').notNull().default(0),
+  proteinG: real('protein_g').notNull().default(0),
+  carbG: real('carb_g').notNull().default(0),
+  fatG: real('fat_g').notNull().default(0),
+  portion: text('portion'),                  // e.g. "1 份 30g"
+  photoUri: text('photo_uri'),
+  source: text('source').notNull().default('manual'),  // 'manual' | 'ai'
+  useCount: integer('use_count').notNull().default(0),
+  lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 // 寵物 inventory（plan v2 §4.2 Hook 4）— 累積式收藏物
 export const petInventory = sqliteTable('pet_inventory', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -274,6 +293,8 @@ export type PetMessage = typeof petMessages.$inferSelect;
 export type NewPetMessage = typeof petMessages.$inferInsert;
 export type PetInventoryItem = typeof petInventory.$inferSelect;
 export type NewPetInventoryItem = typeof petInventory.$inferInsert;
+export type CustomFood = typeof customFoods.$inferSelect;
+export type NewCustomFood = typeof customFoods.$inferInsert;
 export type TrinityCompletion = typeof trinityCompletions.$inferSelect;
 export type NewTrinityCompletion = typeof trinityCompletions.$inferInsert;
 

@@ -71,6 +71,22 @@ async function pushProfile(userId: string) {
   }, { onConflict: 'user_id' });
 }
 
+async function pushCustomFoods(userId: string) {
+  try {
+    const rows = await db.select().from(schema.customFoods);
+    if (rows.length === 0) return;
+    const payload = rows.map((f) => ({
+      user_id: userId, local_id: f.id,
+      name: f.name, emoji: f.emoji,
+      calories_kcal: f.caloriesKcal, protein_g: f.proteinG, carb_g: f.carbG, fat_g: f.fatG,
+      portion: f.portion, photo_uri: f.photoUri, source: f.source,
+      use_count: f.useCount, last_used_at: toISO(f.lastUsedAt),
+      created_at: toISO(f.createdAt), updated_at: new Date().toISOString(),
+    }));
+    await supabase.from('custom_foods').upsert(payload, { onConflict: 'user_id,local_id' });
+  } catch {}
+}
+
 async function pushHealthTables(userId: string) {
   // 4 個健康表的 push（要求 Supabase 已建表，否則忽略錯誤）
   try {
@@ -480,6 +496,7 @@ export async function fullSync(userId: string): Promise<SyncStats> {
   await pushEggsPets(userId);
   await pushAchievements(userId);
   await pushHealthTables(userId);
+  await pushCustomFoods(userId);
 
   stats.pushedWorkouts = Number(w0[0]?.c ?? 0);
   stats.pushedSets = Number(s0[0]?.c ?? 0);

@@ -786,3 +786,104 @@ export async function recentWorkoutDates(userId: number, limit = 30): Promise<st
   );
   return rows.map(r => r.d);
 }
+
+// ===== Custom Foods（plan v5）=====
+
+import type { CustomFood, NewCustomFood } from './schema';
+
+const rowToCustomFood = (r: Row): CustomFood => ({
+  id: r.id,
+  userId: r.user_id,
+  name: r.name,
+  emoji: r.emoji,
+  caloriesKcal: r.calories_kcal,
+  proteinG: r.protein_g,
+  carbG: r.carb_g,
+  fatG: r.fat_g,
+  portion: r.portion,
+  photoUri: r.photo_uri,
+  source: r.source,
+  useCount: r.use_count,
+  lastUsedAt: r.last_used_at ? new Date(r.last_used_at) : null,
+  createdAt: new Date(r.created_at),
+});
+
+export async function listCustomFoods(userId: number, opts?: { searchQuery?: string }): Promise<CustomFood[]> {
+  const q = opts?.searchQuery?.trim();
+  let rows: Row[];
+  if (q) {
+    rows = await sqliteDb.getAllAsync<Row>(
+      `SELECT * FROM custom_foods WHERE user_id = ? AND name LIKE ?
+       ORDER BY use_count DESC, last_used_at DESC, created_at DESC`,
+      [userId, `%${q}%`],
+    );
+  } else {
+    rows = await sqliteDb.getAllAsync<Row>(
+      `SELECT * FROM custom_foods WHERE user_id = ?
+       ORDER BY use_count DESC, last_used_at DESC, created_at DESC`,
+      [userId],
+    );
+  }
+  return rows.map(rowToCustomFood);
+}
+
+export async function getCustomFood(id: number): Promise<CustomFood | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(`SELECT * FROM custom_foods WHERE id = ?`, [id]);
+  return r ? rowToCustomFood(r) : null;
+}
+
+export async function findCustomFoodByName(userId: number, name: string): Promise<CustomFood | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(
+    `SELECT * FROM custom_foods WHERE user_id = ? AND LOWER(name) = LOWER(?)`,
+    [userId, name],
+  );
+  return r ? rowToCustomFood(r) : null;
+}
+
+export async function createCustomFood(data: {
+  userId: number; name: string; emoji?: string;
+  caloriesKcal: number; proteinG: number; carbG: number; fatG: number;
+  portion?: string | null; photoUri?: string | null; source?: 'manual' | 'ai';
+}): Promise<number> {
+  const r = await sqliteDb.runAsync(
+    `INSERT INTO custom_foods (user_id, name, emoji, calories_kcal, protein_g, carb_g, fat_g, portion, photo_uri, source, use_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    [
+      data.userId, data.name, data.emoji ?? '🍽',
+      data.caloriesKcal, data.proteinG, data.carbG, data.fatG,
+      data.portion ?? null, data.photoUri ?? null, data.source ?? 'manual',
+      Date.now(),
+    ],
+  );
+  return Number(r.lastInsertRowId);
+}
+
+export async function updateCustomFood(id: number, patch: Partial<{
+  name: string; emoji: string;
+  caloriesKcal: number; proteinG: number; carbG: number; fatG: number;
+  portion: string | null; photoUri: string | null;
+}>): Promise<void> {
+  const fields: string[] = []; const values: any[] = [];
+  if (patch.name !== undefined) { fields.push('name = ?'); values.push(patch.name); }
+  if (patch.emoji !== undefined) { fields.push('emoji = ?'); values.push(patch.emoji); }
+  if (patch.caloriesKcal !== undefined) { fields.push('calories_kcal = ?'); values.push(patch.caloriesKcal); }
+  if (patch.proteinG !== undefined) { fields.push('protein_g = ?'); values.push(patch.proteinG); }
+  if (patch.carbG !== undefined) { fields.push('carb_g = ?'); values.push(patch.carbG); }
+  if (patch.fatG !== undefined) { fields.push('fat_g = ?'); values.push(patch.fatG); }
+  if (patch.portion !== undefined) { fields.push('portion = ?'); values.push(patch.portion); }
+  if (patch.photoUri !== undefined) { fields.push('photo_uri = ?'); values.push(patch.photoUri); }
+  if (fields.length === 0) return;
+  values.push(id);
+  await sqliteDb.runAsync(`UPDATE custom_foods SET ${fields.join(', ')} WHERE id = ?`, values);
+}
+
+export async function deleteCustomFood(id: number): Promise<void> {
+  await sqliteDb.runAsync(`DELETE FROM custom_foods WHERE id = ?`, [id]);
+}
+
+export async function incrementCustomFoodUse(id: number): Promise<void> {
+  await sqliteDb.runAsync(
+    `UPDATE custom_foods SET use_count = use_count + 1, last_used_at = ? WHERE id = ?`,
+    [Date.now(), id],
+  );
+}

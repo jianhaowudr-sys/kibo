@@ -147,6 +147,9 @@ export default function RootLayout() {
           <Stack.Screen name="health/sleep" options={{ title: '睡眠紀錄' }} />
           <Stack.Screen name="health/period" options={{ title: '經期紀錄' }} />
           <Stack.Screen name="me/health-settings" options={{ title: '健康設定' }} />
+          <Stack.Screen name="me/food-library/index" options={{ title: '我的食物庫' }} />
+          <Stack.Screen name="me/food-library/new" options={{ title: '新增食物', presentation: 'modal' }} />
+          <Stack.Screen name="me/food-library/[id]" options={{ title: '編輯食物' }} />
           <Stack.Screen name="dashboard/customize" options={{ title: '自訂首頁', presentation: 'modal' }} />
           <Stack.Screen name="stats/customize" options={{ title: '自訂數據', presentation: 'modal' }} />
           <Stack.Screen name="onboarding/index" options={{ headerShown: false, presentation: 'fullScreenModal' }} />

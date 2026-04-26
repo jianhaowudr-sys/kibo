@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { User, Exercise, Workout, Egg, Pet, EggType, Routine, RoutineExercise, WorkoutSet, BodyMeasurement, Meal, MealType } from '@/db/schema';
 import type { ThemeMode, ThemeStyle } from '@/lib/theme';
 import type { Session } from '@supabase/supabase-js';
-import type { WaterLog, BowelLog, SleepLog, PeriodDay, PetMessage, BristolType, PeriodFlow } from '@/db/schema';
+import type { WaterLog, BowelLog, SleepLog, PeriodDay, PetMessage, BristolType, PeriodFlow, CustomFood } from '@/db/schema';
 import { DEFAULT_HEALTH_SETTINGS, parseHealthSettings, stringifyHealthSettings, type HealthSettings } from '@/lib/health_settings';
 import { QUICK_ADD_BATCH_MS } from '@/lib/gestures';
 import * as healthRepo from '@/db/health_repo';
@@ -53,6 +53,8 @@ type State = {
   statsLayoutJson: string | null;
   /** Onboarding 第 4 頁使用者輸入的寵物名，孵化時用 */
   onboardingPetName: string | null;
+  /** 自訂食物庫（plan v5）*/
+  customFoods: CustomFood[];
   authSession: Session | null;
   authLoading: boolean;
 
@@ -140,6 +142,13 @@ type Actions = {
   setOnboardingPetName: (name: string | null) => Promise<void>;
   loadOnboardingPetName: () => Promise<void>;
 
+  // 食物庫（v5）
+  refreshCustomFoods: (searchQuery?: string) => Promise<void>;
+  addCustomFood: (data: Omit<import('@/db/schema').NewCustomFood, 'id' | 'userId' | 'useCount' | 'createdAt' | 'lastUsedAt'>) => Promise<number>;
+  updateCustomFood: (id: number, patch: any) => Promise<void>;
+  deleteCustomFood: (id: number) => Promise<void>;
+  useCustomFood: (id: number, multiplier: number) => Promise<{ name: string; portion?: string; calories: number; protein: number; carb: number; fat: number } | null>;
+
   // 健康模組 actions
   refreshHealth: () => Promise<void>;
   addWater: (amountMl: number, opts?: { batch?: boolean }) => Promise<void>;
@@ -215,6 +224,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   calendarViewMode: 'month' as 'month' | 'week' | 'last7days',
   statsLayoutJson: null,
   onboardingPetName: null,
+  customFoods: [],
   authSession: null,
   waterToday: [],
   bowelToday: [],
@@ -295,6 +305,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       }
 
       await get().refreshHealth();
+      await get().refreshCustomFoods();
     }
   },
 
@@ -713,6 +724,60 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const v = await AsyncStorage.getItem('@kibo/onboarding_pet_name');
     set({ onboardingPetName: v });
+  },
+
+  refreshCustomFoods: async (searchQuery) => {
+    const u = get().user;
+    if (!u) return;
+    const list = await repo.listCustomFoods(u.id, { searchQuery });
+    set({ customFoods: list });
+  },
+
+  addCustomFood: async (data) => {
+    const u = get().user;
+    if (!u) return 0;
+    const id = await repo.createCustomFood({
+      userId: u.id,
+      name: data.name,
+      emoji: data.emoji,
+      caloriesKcal: data.caloriesKcal ?? 0,
+      proteinG: data.proteinG ?? 0,
+      carbG: data.carbG ?? 0,
+      fatG: data.fatG ?? 0,
+      portion: data.portion,
+      photoUri: data.photoUri,
+      source: data.source as 'manual' | 'ai',
+    });
+    await get().refreshCustomFoods();
+    get().enqueueSync?.();
+    return id;
+  },
+
+  updateCustomFood: async (id, patch) => {
+    await repo.updateCustomFood(id, patch);
+    await get().refreshCustomFoods();
+    get().enqueueSync?.();
+  },
+
+  deleteCustomFood: async (id) => {
+    await repo.deleteCustomFood(id);
+    await get().refreshCustomFoods();
+    get().enqueueSync?.();
+  },
+
+  useCustomFood: async (id, multiplier) => {
+    const food = await repo.getCustomFood(id);
+    if (!food) return null;
+    await repo.incrementCustomFoodUse(id);
+    await get().refreshCustomFoods();
+    return {
+      name: food.name,
+      portion: food.portion ? `${multiplier} × ${food.portion}` : `${multiplier} 份`,
+      calories: Math.round(food.caloriesKcal * multiplier),
+      protein: Math.round(food.proteinG * multiplier * 10) / 10,
+      carb: Math.round(food.carbG * multiplier * 10) / 10,
+      fat: Math.round(food.fatG * multiplier * 10) / 10,
+    };
   },
 
   // ===== 健康模組 =====
