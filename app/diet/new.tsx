@@ -11,7 +11,6 @@ import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import { useLowPower } from '@/hooks/useLowPower';
-import { TutorialTip } from '@/components/common/TutorialTip';
 import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
 import type { MealType, MealItem } from '@/db/schema';
 
@@ -463,7 +462,6 @@ export default function NewMeal() {
           </>
         )}
 
-        <TutorialTip id="diet-multi-photo" delay={1500} />
         <FoodPickerModal
           visible={pickerOpen}
           onClose={() => setPickerOpen(false)}

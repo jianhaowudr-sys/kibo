@@ -104,11 +104,18 @@ export function ExerciseSetTable({
           const kmStr = distanceM != null ? (distanceM / 1000).toFixed(1) : '';
           const mStr = distanceM != null ? String(distanceM) : '';
 
+          const isPR = isDone ? (row.set as any).isPR : null;
+
           return (
             <View key={key} className="flex-row items-center gap-2">
-              <Text className={`w-6 text-center font-bold ${isDone ? 'text-kibo-primary' : 'text-kibo-mute'}`}>
-                {row.idx + 1}
-              </Text>
+              <View style={{ width: 24, alignItems: 'center' }}>
+                <Text className={`text-center font-bold ${isDone ? 'text-kibo-primary' : 'text-kibo-mute'}`}>
+                  {row.idx + 1}
+                </Text>
+                {isPR && (
+                  <Text style={{ fontSize: 12 }}>🏆</Text>
+                )}
+              </View>
 
               {useReps && (
                 <>

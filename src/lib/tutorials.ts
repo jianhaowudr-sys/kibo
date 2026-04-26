@@ -91,6 +91,13 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'me',
     icon: '🍽',
   },
+  'food-library-star': {
+    id: 'food-library-star',
+    title: '☆ 一鍵存食物庫',
+    body: '拍照 AI 辨識出的食物明細旁的 ☆ 點一下即存入食物庫，已存的會變實心 ★。下次同食物直接挑不必再拍。',
+    scope: 'diet',
+    icon: '⭐',
+  },
   'calendar-view-mode': {
     id: 'calendar-view-mode',
     title: '月曆切檢視',

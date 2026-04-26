@@ -240,6 +240,7 @@ export default function ActiveWorkout() {
         completed: true,
         exp: s.exp,
         createdAt: new Date(),
+        isPR: s.isPR ?? null,
       }))
     : [];
   const currentPlannedSets = selectedExercise ? plannedSetsByExercise[selectedExercise.id] ?? [] : [];
