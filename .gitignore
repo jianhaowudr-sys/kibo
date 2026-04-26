@@ -39,6 +39,10 @@ yarn-error.*
 build-*.log
 dev-server.log
 
+# secrets
+.supabase-tables.sql
+.supabase-token.txt
+
 # build artifacts
 *.apk
 *.aab

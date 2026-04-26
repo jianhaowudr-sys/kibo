@@ -155,6 +155,7 @@ export default function RootLayout() {
           <Stack.Screen name="onboarding/index" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="pet/index" options={{ headerShown: false }} />
           <Stack.Screen name="pet/inventory" options={{ title: '圖鑑收藏' }} />
+          <Stack.Screen name="pet/messages" options={{ title: '寵物訊息' }} />
         </Stack>
         <UndoToast />
         <SurpriseBoxBridge />

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as healthRepo from '@/db/health_repo';
@@ -15,6 +16,7 @@ const CATEGORY_ICON: Record<string, string> = {
 
 export function PetMessageCard() {
   const palette = useThemePalette();
+  const router = useRouter();
   const messages = useAppStore((s) => s.petMessages);
   const refreshHealth = useAppStore((s) => s.refreshHealth);
   const pets = useAppStore((s) => s.pets);
@@ -24,11 +26,9 @@ export function PetMessageCard() {
   const unreadCount = useMemo(() => messages.filter((m) => !m.read).length, [messages]);
   const petName = pets[0]?.name ?? '小傢伙';
 
-  const markRead = async () => {
-    if (!user) return;
+  const goHistory = () => {
     haptic.tapLight();
-    await healthRepo.markAllPetMessagesRead(user.id);
-    await refreshHealth();
+    router.push('/pet/messages' as any);
   };
 
   if (!latest) {
@@ -51,7 +51,7 @@ export function PetMessageCard() {
   const ts = latest.generatedAt instanceof Date ? latest.generatedAt : new Date(latest.generatedAt);
   return (
     <Pressable
-      onPress={markRead}
+      onPress={goHistory}
       style={{
         backgroundColor: palette.surface, padding: 14, borderRadius: 16,
         borderWidth: 1, borderColor: palette.card, marginBottom: 12,
@@ -78,7 +78,7 @@ export function PetMessageCard() {
           <Text style={{ color: palette.text, fontSize: 13, lineHeight: 19 }}>
             {CATEGORY_ICON[latest.category] ?? ''} {latest.text}
           </Text>
-          <Text style={{ color: palette.mute, fontSize: 10, marginTop: 6 }}>點一下標為已讀</Text>
+          <Text style={{ color: palette.mute, fontSize: 10, marginTop: 6 }}>點一下看全部訊息 →</Text>
         </View>
       </View>
     </Pressable>

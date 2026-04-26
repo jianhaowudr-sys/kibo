@@ -31,6 +31,7 @@ export type DashboardLayout = {
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   cards: [
+    // 預設精簡（v5 後）：寵物 + 月曆 + 健康三卡 + 訓練。其他可在自訂頁開
     { id: 'pet-hero', visible: true, order: 0, size: 'full' },
     { id: 'streak-trinity', visible: false, order: 1, size: 'compact' },
     { id: 'calendar', visible: true, order: 2, size: 'full' },
@@ -38,7 +39,7 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
     { id: 'health-bowel', visible: true, order: 4, size: 'compact' },
     { id: 'health-sleep', visible: true, order: 5, size: 'compact' },
     { id: 'health-period', visible: false, order: 6, size: 'compact' },
-    { id: 'pet-message', visible: true, order: 7, size: 'full' },
+    { id: 'pet-message', visible: false, order: 7, size: 'full' },  // 預設關，第 1~7 天通常無訊息
     { id: 'today-workouts', visible: true, order: 8, size: 'full' },
     { id: 'today-meals', visible: false, order: 9, size: 'full' },
     { id: 'body-summary', visible: false, order: 10, size: 'compact' },

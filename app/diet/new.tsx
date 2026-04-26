@@ -67,6 +67,32 @@ export default function NewMeal() {
     haptic.success();
   };
 
+  // 食物庫去重檢查 — 已經在庫的 item.name 標 ★
+  const customFoods = useAppStore((s) => s.customFoods);
+  const addCustomFood = useAppStore((s) => s.addCustomFood);
+  const isInLibrary = (name: string) => customFoods.some((f) => f.name.trim().toLowerCase() === name.trim().toLowerCase());
+
+  const saveItemToLibrary = async (item: MealItem) => {
+    if (isInLibrary(item.name)) {
+      Alert.alert('已在食物庫', `「${item.name}」已存在於食物庫`);
+      return;
+    }
+    haptic.tapMedium();
+    await addCustomFood({
+      name: item.name,
+      emoji: '🍽',
+      caloriesKcal: Math.round(item.calories || 0),
+      proteinG: Math.round((item.protein || 0) * 10) / 10,
+      carbG: Math.round((item.carb || 0) * 10) / 10,
+      fatG: Math.round((item.fat || 0) * 10) / 10,
+      portion: item.portion || '1 份',
+      photoUri: photos[0]?.uri ?? null,
+      source: 'ai',
+    });
+    haptic.success();
+    Alert.alert('✓ 已加入食物庫', `「${item.name}」下次可直接點選不必再拍`);
+  };
+
   const extractTakenAt = (asset: any, source: 'camera' | 'library'): number | null => {
     const exif: any = asset.exif;
     const taken = exif?.DateTimeOriginal || exif?.DateTime;
@@ -419,21 +445,33 @@ export default function NewMeal() {
           <>
             <Text className="text-kibo-text text-base font-bold mb-2">食物明細</Text>
             <View className="bg-kibo-surface rounded-2xl p-3 border border-kibo-card mb-4">
-              {items.map((it, i) => (
-                <View
-                  key={i}
-                  className={`flex-row items-center gap-2 py-2 ${i > 0 ? 'border-t border-kibo-card' : ''}`}
-                >
-                  <View className="flex-1">
-                    <Text className="text-kibo-text font-semibold text-sm">{it.name}</Text>
-                    {it.portion && <Text className="text-kibo-mute text-xs">{it.portion}</Text>}
+              {items.map((it, i) => {
+                const inLib = isInLibrary(it.name);
+                return (
+                  <View
+                    key={i}
+                    className={`flex-row items-center gap-2 py-2 ${i > 0 ? 'border-t border-kibo-card' : ''}`}
+                  >
+                    <View className="flex-1">
+                      <Text className="text-kibo-text font-semibold text-sm">{it.name}</Text>
+                      {it.portion && <Text className="text-kibo-mute text-xs">{it.portion}</Text>}
+                    </View>
+                    <Text className="text-kibo-accent text-xs">{it.calories} kcal</Text>
+                    <Pressable
+                      onPress={() => saveItemToLibrary(it)}
+                      hitSlop={8}
+                      style={{ paddingHorizontal: 4 }}
+                    >
+                      <Text style={{ fontSize: 16, color: inLib ? '#ffa300' : '#83769c' }}>
+                        {inLib ? '★' : '☆'}
+                      </Text>
+                    </Pressable>
+                    <Pressable onPress={() => removeItem(i)}>
+                      <Text className="text-kibo-danger ml-1">✕</Text>
+                    </Pressable>
                   </View>
-                  <Text className="text-kibo-accent text-xs">{it.calories} kcal</Text>
-                  <Pressable onPress={() => removeItem(i)}>
-                    <Text className="text-kibo-danger ml-2">✕</Text>
-                  </Pressable>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </>
         )}

@@ -30,8 +30,16 @@ export function FoodPickerModal({ visible, onClose, onPick }: Props) {
 
   const filtered = useMemo(() => {
     const trimmed = q.trim().toLowerCase();
-    if (!trimmed) return customFoods;
-    return customFoods.filter((f) => f.name.toLowerCase().includes(trimmed));
+    const list = trimmed
+      ? customFoods.filter((f) => f.name.toLowerCase().includes(trimmed))
+      : customFoods;
+    // 按 useCount DESC, lastUsedAt DESC（常用浮上來）
+    return [...list].sort((a, b) => {
+      if (b.useCount !== a.useCount) return b.useCount - a.useCount;
+      const at = a.lastUsedAt ? +new Date(a.lastUsedAt) : 0;
+      const bt = b.lastUsedAt ? +new Date(b.lastUsedAt) : 0;
+      return bt - at;
+    });
   }, [customFoods, q]);
 
   const onConfirm = async () => {
