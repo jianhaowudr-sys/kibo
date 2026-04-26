@@ -30,6 +30,7 @@ export type ActiveSet = {
   durationSec?: number | null;
   distanceM?: number | null;
   exp: number;
+  isPR?: 'volume' | 'duration' | 'distance' | null;
 };
 
 type State = {
@@ -50,6 +51,8 @@ type State = {
   lowPowerMode: boolean;
   calendarViewMode: 'month' | 'week' | 'last7days';
   statsLayoutJson: string | null;
+  /** Onboarding 第 4 頁使用者輸入的寵物名，孵化時用 */
+  onboardingPetName: string | null;
   authSession: Session | null;
   authLoading: boolean;
 
@@ -134,6 +137,8 @@ type Actions = {
   loadCalendarViewMode: () => Promise<void>;
   setStatsLayoutJson: (json: string) => Promise<void>;
   loadStatsLayoutJson: () => Promise<void>;
+  setOnboardingPetName: (name: string | null) => Promise<void>;
+  loadOnboardingPetName: () => Promise<void>;
 
   // 健康模組 actions
   refreshHealth: () => Promise<void>;
@@ -209,6 +214,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   lowPowerMode: false,
   calendarViewMode: 'month' as 'month' | 'week' | 'last7days',
   statsLayoutJson: null,
+  onboardingPetName: null,
   authSession: null,
   waterToday: [],
   bowelToday: [],
@@ -348,7 +354,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   },
 
   addActiveSet: async (exercise, data) => {
-    const { currentWorkoutId, activeSets } = get();
+    const { currentWorkoutId, activeSets, user } = get();
     if (!currentWorkoutId) return;
     const orderIdx = activeSets.length;
     const setInput = {
@@ -365,8 +371,28 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       ...setInput,
       exp,
     });
+    // PR 偵測：set 寫入 DB 後（this includes current）查歷史最佳是否被當前打破
+    let isPR: 'volume' | 'duration' | 'distance' | null = null;
+    try {
+      if (user) {
+        const { checkPR } = await import('@/lib/pr_check');
+        isPR = await checkPR(user.id, exercise.id, setInput);
+        if (isPR) {
+          // 寵物送 celebration 訊息
+          await healthRepo.addPetMessage({
+            userId: user.id,
+            petId: get().pets[0]?.id ?? null,
+            generatedAt: new Date(),
+            category: 'celebration',
+            text: `🏆 打破個人紀錄！${exercise.name}`,
+            read: 0,
+            triggerData: JSON.stringify({ type: 'pr', exerciseId: exercise.id, prType: isPR }),
+          });
+        }
+      }
+    } catch {}
     set({
-      activeSets: [...activeSets, { id, exercise, orderIdx, ...setInput, exp }],
+      activeSets: [...activeSets, { id, exercise, orderIdx, ...setInput, exp, isPR }],
     });
   },
 
@@ -375,7 +401,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     set({ activeSets: get().activeSets.filter(s => s.id !== id) });
   },
 
-  finishWorkout: async () => {
+  finishWorkout: async (note?: string) => {
     const { currentWorkoutId, activeSets, workoutStartedAt, user, activeEgg } = get();
     if (!currentWorkoutId || !user) return null;
     if (activeSets.length === 0) {
@@ -388,7 +414,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const totalVolume = activeSets.reduce((s, v) => s + calcVolume(v), 0);
     const durationSec = workoutStartedAt ? Math.floor((Date.now() - workoutStartedAt) / 1000) : 0;
 
-    await repo.finishWorkout(currentWorkoutId, { totalExp, totalVolume, durationSec });
+    await repo.finishWorkout(currentWorkoutId, { totalExp, totalVolume, durationSec, note });
 
     const today = todayKey();
     let streak = user.streak;
@@ -674,6 +700,19 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     const v = await AsyncStorage.getItem('@kibo/stats_layout');
     set({ statsLayoutJson: v });
+  },
+
+  setOnboardingPetName: async (name) => {
+    set({ onboardingPetName: name });
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    if (name) await AsyncStorage.setItem('@kibo/onboarding_pet_name', name);
+    else await AsyncStorage.removeItem('@kibo/onboarding_pet_name');
+  },
+
+  loadOnboardingPetName: async () => {
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const v = await AsyncStorage.getItem('@kibo/onboarding_pet_name');
+    set({ onboardingPetName: v });
   },
 
   // ===== 健康模組 =====
@@ -1204,19 +1243,29 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   setPendingHatch: (p) => set({ pendingHatch: p }),
 
   confirmHatch: async (petName) => {
-    const { pendingHatch, user } = get();
+    const { pendingHatch, user, onboardingPetName } = get();
     if (!pendingHatch || !user) return;
+
+    // 優先順序：使用者孵化時填的名字 > onboarding 命名 > pendingHatch 預設
+    const finalName = (petName && petName.trim())
+      || (onboardingPetName && onboardingPetName.trim())
+      || pendingHatch.petName;
 
     const petId = await repo.createPet({
       userId: user.id,
       eggId: pendingHatch.eggId,
-      name: petName || pendingHatch.petName,
+      name: finalName,
       species: pendingHatch.petName,
       type: pendingHatch.type,
       emoji: pendingHatch.emoji,
     });
 
     await repo.hatchEgg(pendingHatch.eggId, petId);
+
+    // 用過的 onboarding 名字清掉，下次孵化不再 reuse
+    if (onboardingPetName) {
+      await get().setOnboardingPetName(null);
+    }
 
     const nextTypes: EggType[] = ['strength', 'cardio', 'flex'];
     const idx = Math.floor(Math.random() * nextTypes.length);

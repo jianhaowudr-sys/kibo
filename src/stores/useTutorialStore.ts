@@ -5,24 +5,34 @@ const KEY = '@kibo/seen_tutorials';
 
 type State = {
   seen: Set<string>;
+  seenMaster: boolean;
   loaded: boolean;
   hydrate: () => Promise<void>;
   isSeen: (id: string) => boolean;
   markSeen: (id: string) => Promise<void>;
+  markMasterSeen: () => Promise<void>;
   reset: (id?: string) => Promise<void>;
 };
 
+const MASTER_KEY = '@kibo/seen_master';
+
 export const useTutorialStore = create<State>((set, get) => ({
   seen: new Set(),
+  seenMaster: false,
   loaded: false,
   hydrate: async () => {
     try {
       const raw = await AsyncStorage.getItem(KEY);
       const arr: string[] = raw ? JSON.parse(raw) : [];
-      set({ seen: new Set(arr), loaded: true });
+      const m = await AsyncStorage.getItem(MASTER_KEY);
+      set({ seen: new Set(arr), seenMaster: m === '1', loaded: true });
     } catch {
-      set({ seen: new Set(), loaded: true });
+      set({ seen: new Set(), seenMaster: false, loaded: true });
     }
+  },
+  markMasterSeen: async () => {
+    set({ seenMaster: true });
+    try { await AsyncStorage.setItem(MASTER_KEY, '1'); } catch {}
   },
   isSeen: (id) => get().seen.has(id),
   markSeen: async (id) => {

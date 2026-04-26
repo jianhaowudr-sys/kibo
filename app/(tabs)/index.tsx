@@ -19,6 +19,8 @@ import { DailyTrinityCard } from '@/components/dashboard/DailyTrinityCard';
 import { PetMessageCard } from '@/components/dashboard/PetMessageCard';
 import { BodySummaryCard } from '@/components/dashboard/BodySummaryCard';
 import { NutritionSummaryCard } from '@/components/dashboard/NutritionSummaryCard';
+import { PetHeroBar } from '@/components/dashboard/PetHeroBar';
+import { MasterTutorialTip } from '@/components/common/MasterTutorialTip';
 import { parseLayout } from '@/lib/dashboard';
 import type { Workout, EggType } from '@/db/schema';
 
@@ -172,11 +174,19 @@ export default function HomeScreen() {
 
         {/* dashboard 控制列（永遠在最頂） */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginBottom: 8, gap: 8 }}>
-          <Pressable onPress={() => router.push('/dashboard/customize' as any)} hitSlop={8}>
-            <Text style={{ fontSize: 18 }}>⚙️</Text>
+          <Pressable
+            onPress={() => router.push('/dashboard/customize' as any)}
+            hitSlop={8}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: '#83769c22' }}
+          >
+            <Text style={{ fontSize: 14 }}>⚙️</Text>
+            <Text style={{ color: '#83769c', fontSize: 12, fontWeight: '600' }}>自訂</Text>
           </Pressable>
           <HelpIcon scope="home" />
         </View>
+
+        {/* 寵物常駐列 */}
+        {isCardVisible('pet-hero') && <PetHeroBar />}
 
         {/* Daily Trinity（依 layout） */}
         {isCardVisible('streak-trinity') && <DailyTrinityCard />}
@@ -296,6 +306,7 @@ export default function HomeScreen() {
         onClose={() => setWakePromptOpen(false)}
         promptMode
       />
+      <MasterTutorialTip />
     </SafeAreaView>
   );
 }

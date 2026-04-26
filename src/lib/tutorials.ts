@@ -21,10 +21,31 @@ export type Tutorial = {
 };
 
 export const TUTORIALS: Record<string, Tutorial> = {
+  'master-welcome': {
+    id: 'master-welcome',
+    title: '歡迎來到 Kibo',
+    body: '右上 ⚙️ 自訂顯示，❓ 看小技巧；長按卡片進歷史；右上 ⋯ 進詳細編輯。',
+    scope: 'home',
+    icon: '👋',
+  },
+  'pet-hero-bar': {
+    id: 'pet-hero-bar',
+    title: '寵物常駐',
+    body: '頁面頂端的寵物列即時反映 7 天活動心情，點一下進場景頁互動。',
+    scope: 'home',
+    icon: '🐣',
+  },
+  'pr-badge': {
+    id: 'pr-badge',
+    title: '個人紀錄',
+    body: '訓練中打破歷史最佳會出現 🏆 PR 徽章 + 寵物慶祝訊息。',
+    scope: 'workout',
+    icon: '🏆',
+  },
   'water-wheel-pick': {
     id: 'water-wheel-pick',
-    title: '滾輪選量',
-    body: '上下滑動數字選擇喝水量（50ml 步進），左右兩顆按鈕一鍵跳到杯/瓶量，按「記錄」送出。',
+    title: '喝水滾輪',
+    body: '滑動數字選量（50ml 步進）→ 點「設為杯/瓶」可跳到該量 → 按下「記錄」送出。',
     scope: 'home',
     icon: '💧',
   },
@@ -70,17 +91,17 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'me',
     icon: '📊',
   },
-  'bowel-longpress-detail': {
-    id: 'bowel-longpress-detail',
-    title: '長按詳填',
-    body: '單擊一鍵記錄，長按可填 Bristol 分級與症狀。',
+  'bowel-detail': {
+    id: 'bowel-detail',
+    title: '排便詳填',
+    body: '單擊 +1 一鍵記錄；右上 ⋯ 進 Bristol 分級與症狀詳填。',
     scope: 'home',
     icon: '💩',
   },
-  'period-cycle-start': {
-    id: 'period-cycle-start',
-    title: '經期開始',
-    body: '點【經期開始】會把今天標為週期第一天，之後每天可單擊記錄流量。',
+  'period-detail': {
+    id: 'period-detail',
+    title: '經期記錄',
+    body: '單擊一鍵記錄今天；右上 ⋯ 詳填流量、症狀、是否為週期第一天。',
     scope: 'home',
     icon: '🌸',
   },

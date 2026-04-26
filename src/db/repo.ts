@@ -282,12 +282,19 @@ export async function listSetsForWorkout(workoutId: number): Promise<WorkoutSet[
 }
 
 export async function finishWorkout(workoutId: number, totals: {
-  totalExp: number; totalVolume: number; durationSec: number;
+  totalExp: number; totalVolume: number; durationSec: number; note?: string;
 }): Promise<void> {
-  await sqliteDb.runAsync(
-    'UPDATE workouts SET ended_at = ?, total_exp = ?, total_volume = ?, duration_sec = ? WHERE id = ?',
-    [Date.now(), totals.totalExp, totals.totalVolume, totals.durationSec, workoutId],
-  );
+  if (totals.note !== undefined) {
+    await sqliteDb.runAsync(
+      'UPDATE workouts SET ended_at = ?, total_exp = ?, total_volume = ?, duration_sec = ?, note = ? WHERE id = ?',
+      [Date.now(), totals.totalExp, totals.totalVolume, totals.durationSec, totals.note, workoutId],
+    );
+  } else {
+    await sqliteDb.runAsync(
+      'UPDATE workouts SET ended_at = ?, total_exp = ?, total_volume = ?, duration_sec = ? WHERE id = ?',
+      [Date.now(), totals.totalExp, totals.totalVolume, totals.durationSec, workoutId],
+    );
+  }
 }
 
 export async function cancelWorkout(workoutId: number): Promise<void> {

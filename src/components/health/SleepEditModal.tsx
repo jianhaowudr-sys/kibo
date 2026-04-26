@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, Modal, ScrollView } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
-import { TutorialTip } from '@/components/common/TutorialTip';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
 
@@ -161,7 +160,6 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
           >
             <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 16 }}>記錄</Text>
           </Pressable>
-          <TutorialTip id="wake-prompt" delay={500} />
         </View>
       </View>
     </Modal>

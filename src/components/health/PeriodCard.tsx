@@ -6,7 +6,7 @@ import { useThemePalette } from '@/lib/useThemePalette';
 import { LONG_PRESS_MS } from '@/lib/gestures';
 import { computeCyclePrediction } from '@/lib/period_predict';
 import * as haptic from '@/lib/haptic';
-import { TutorialTip } from '@/components/common/TutorialTip';
+import { PeriodDetailModal } from './PeriodDetailModal';
 import { format } from 'date-fns';
 
 type Props = { mode?: 'compact' | 'full' };
@@ -36,6 +36,8 @@ export function PeriodCard({ mode = 'full' }: Props) {
     await upsertPeriodDay({ date: Date.now(), flow: 'medium' });
   };
 
+  const [detailOpen, setDetailOpen] = useState(false);
+
   const bg = pred.isPmsWindow ? '#ffd0e0' : palette.surface;
 
   if (mode === 'compact') {
@@ -64,6 +66,7 @@ export function PeriodCard({ mode = 'full' }: Props) {
   }
 
   return (
+    <>
     <Pressable
       onLongPress={() => router.push('/health/period' as any)}
       delayLongPress={LONG_PRESS_MS}
@@ -91,6 +94,9 @@ export function PeriodCard({ mode = 'full' }: Props) {
             開始追蹤
           </Text>
         )}
+        <Pressable hitSlop={12} onPress={() => { haptic.tapMedium(); setDetailOpen(true); }}>
+          <Text style={{ color: palette.mute, fontSize: 18, paddingHorizontal: 4 }}>⋯</Text>
+        </Pressable>
       </View>
 
       <Text style={{ color: palette.mute, fontSize: 11, marginBottom: 8 }}>
@@ -114,9 +120,22 @@ export function PeriodCard({ mode = 'full' }: Props) {
           <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 12 }}>🌸 經期開始</Text>
         </Pressable>
       )}
-
-      <TutorialTip id="period-cycle-start" delay={2500} />
     </Pressable>
+    <PeriodDetailModal
+      visible={detailOpen}
+      onClose={() => setDetailOpen(false)}
+      onSave={async (data) => {
+        await upsertPeriodDay({
+          date: Date.now(),
+          flow: data.flow,
+          symptoms: data.symptoms,
+          notes: data.notes,
+          isCycleStart: data.isCycleStart,
+        });
+        setDetailOpen(false);
+      }}
+    />
+    </>
   );
 }
 

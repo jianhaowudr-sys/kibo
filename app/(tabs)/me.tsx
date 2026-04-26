@@ -294,7 +294,7 @@ export default function MeScreen() {
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, backgroundColor: palette.card }}
               >
                 <Text style={{ fontSize: 14 }}>⚙️</Text>
-                <Text style={{ color: palette.text, fontSize: 11, fontWeight: '600' }}>自訂顯示</Text>
+                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600' }}>自訂</Text>
               </Pressable>
             </View>
 
@@ -872,12 +872,12 @@ export default function MeScreen() {
               </Pressable>
             </Panel>
 
-            {/* ⚙️ 健康設定 */}
+            {/* 🧬 健康偏好 */}
             <Pressable
               onPress={() => { haptic.tapLight(); router.push('/me/health-settings' as any); }}
               className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
             >
-              <Text className="text-kibo-text font-semibold flex-1">⚙️ 健康設定</Text>
+              <Text className="text-kibo-text font-semibold flex-1">🧬 健康偏好</Text>
               <Text className="text-kibo-mute">▶</Text>
             </Pressable>
 

@@ -5,7 +5,6 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { LONG_PRESS_MS } from '@/lib/gestures';
 import * as haptic from '@/lib/haptic';
-import { TutorialTip } from '@/components/common/TutorialTip';
 import { BristolPicker } from './BristolPicker';
 
 type Props = { mode?: 'compact' | 'full' };
@@ -26,12 +25,6 @@ export function BowelCard({ mode = 'full' }: Props) {
   const onTap = async () => {
     const id = await addBowel();
     setEditingId(id);
-  };
-
-  const onLong = async () => {
-    haptic.tapMedium();
-    setEditingId(null);
-    setPickerOpen(true);
   };
 
   if (mode === 'compact') {
@@ -92,6 +85,9 @@ export function BowelCard({ mode = 'full' }: Props) {
           <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }} numberOfLines={1}>
             今日 {bowelToday.length} 次
           </Text>
+          <Pressable hitSlop={12} onPress={(e) => { e.stopPropagation?.(); haptic.tapMedium(); setEditingId(null); setPickerOpen(true); }}>
+            <Text style={{ color: palette.mute, fontSize: 18, paddingHorizontal: 4 }}>⋯</Text>
+          </Pressable>
         </View>
         <Text style={{ color: palette.mute, fontSize: 11, marginBottom: 8 }}>
           {hours !== null ? `距上次 ${hours}h` : '今天還沒記錄'}
@@ -99,8 +95,6 @@ export function BowelCard({ mode = 'full' }: Props) {
         <View style={{ flexDirection: 'row', gap: 6 }}>
           <Pressable
             onPress={onTap}
-            onLongPress={onLong}
-            delayLongPress={LONG_PRESS_MS}
             style={{
               flex: 1,
               backgroundColor: palette.primary,
@@ -112,7 +106,6 @@ export function BowelCard({ mode = 'full' }: Props) {
             <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 12 }}>💩 +1</Text>
           </Pressable>
         </View>
-        <TutorialTip id="bowel-longpress-detail" delay={2000} />
       </Pressable>
 
       <BristolPicker

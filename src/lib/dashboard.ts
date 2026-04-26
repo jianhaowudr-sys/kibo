@@ -4,6 +4,7 @@
  */
 
 export type DashboardCardId =
+  | 'pet-hero'
   | 'pet'
   | 'streak-trinity'
   | 'calendar'
@@ -30,23 +31,25 @@ export type DashboardLayout = {
 
 export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
   cards: [
-    { id: 'pet', visible: true, order: 0, size: 'full' },
+    { id: 'pet-hero', visible: true, order: 0, size: 'full' },
     { id: 'streak-trinity', visible: false, order: 1, size: 'compact' },
     { id: 'calendar', visible: true, order: 2, size: 'full' },
     { id: 'health-water', visible: true, order: 3, size: 'compact' },
     { id: 'health-bowel', visible: true, order: 4, size: 'compact' },
     { id: 'health-sleep', visible: true, order: 5, size: 'compact' },
     { id: 'health-period', visible: false, order: 6, size: 'compact' },
-    { id: 'pet-message', visible: false, order: 7, size: 'full' },
+    { id: 'pet-message', visible: true, order: 7, size: 'full' },
     { id: 'today-workouts', visible: true, order: 8, size: 'full' },
     { id: 'today-meals', visible: false, order: 9, size: 'full' },
     { id: 'body-summary', visible: false, order: 10, size: 'compact' },
     { id: 'nutrition-summary', visible: false, order: 11, size: 'compact' },
+    { id: 'pet', visible: false, order: 12, size: 'full' },
   ],
 };
 
 export const CARD_LABELS: Record<DashboardCardId, string> = {
-  'pet': '🐣 寵物',
+  'pet-hero': '🐣 寵物常駐列（頂端）',
+  'pet': '🥚 蛋進度（小卡）',
   'streak-trinity': '🔥 連續日 + 今日三件事',
   'calendar': '📅 月曆',
   'health-water': '💧 喝水',

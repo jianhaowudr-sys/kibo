@@ -14,6 +14,7 @@ export default function Onboarding() {
   const update = useAppStore((s) => s.updateHealthSettings);
   const setLayoutJson = useAppStore((s) => s.setDashboardLayoutJson);
   const refreshUser = useAppStore((s) => s.refreshUser);
+  const setOnboardingPetName = useAppStore((s) => s.setOnboardingPetName);
 
   const [step, setStep] = useState(0);
   const [trackWorkout, setTrackWorkout] = useState(true);
@@ -47,7 +48,8 @@ export default function Onboarding() {
       await update({ period: { enabled: true, avgCycleDays: 28, avgPeriodDays: 5, predictionEnabled: true, pmsReminderEnabled: false } });
     }
 
-    // 寵物名（如果有 active egg，命名是其後 hatch 後事，這裡只做完成標記）
+    // 寵物名先存，孵化時用
+    await setOnboardingPetName(petName.trim() || 'Kibo');
     await healthRepo.setOnboardingCompleted(user.id);
     await refreshUser();
     router.replace('/(tabs)' as any);

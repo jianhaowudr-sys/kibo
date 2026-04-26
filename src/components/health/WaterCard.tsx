@@ -5,7 +5,6 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { LONG_PRESS_MS } from '@/lib/gestures';
 import * as haptic from '@/lib/haptic';
-import { TutorialTip } from '@/components/common/TutorialTip';
 import { WheelPicker } from '@/components/common/WheelPicker';
 
 type Props = {
@@ -104,40 +103,44 @@ export function WaterCard({ mode = 'full' }: Props) {
         ))}
       </View>
 
-      {/* 中央 wheel + 兩側按鈕 */}
+      {/* 中央 wheel + 兩側「設為」按鈕 */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <Pressable
           onPress={() => { haptic.tapLight(); setPicked(settings.water.favoriteCupMl); }}
           style={{
             backgroundColor: palette.card,
-            paddingVertical: 10, paddingHorizontal: 12,
+            paddingVertical: 10, paddingHorizontal: 10,
             borderRadius: 8, alignItems: 'center',
           }}
         >
-          <Text style={{ color: palette.text, fontSize: 11 }}>杯</Text>
-          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 13 }}>{settings.water.favoriteCupMl}</Text>
+          <Text style={{ color: palette.mute, fontSize: 9 }}>設為</Text>
+          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 13 }}>杯 {settings.water.favoriteCupMl} →</Text>
         </Pressable>
 
-        <WheelPicker
-          values={WHEEL_VALUES}
-          value={picked}
-          onChange={setPicked}
-          formatLabel={(v) => `${v}ml`}
-          width={140}
-          itemHeight={36}
-          visibleCount={3}
-        />
+        <View style={{ alignItems: 'center' }}>
+          <WheelPicker
+            values={WHEEL_VALUES}
+            value={picked}
+            onChange={setPicked}
+            formatLabel={(v) => `${v}`}
+            width={130}
+            itemHeight={44}
+            visibleCount={3}
+            activeFontSize={32}
+          />
+          <Text style={{ color: palette.mute, fontSize: 10, marginTop: -4 }}>ml</Text>
+        </View>
 
         <Pressable
           onPress={() => { haptic.tapLight(); setPicked(settings.water.bottleMl); }}
           style={{
             backgroundColor: palette.card,
-            paddingVertical: 10, paddingHorizontal: 12,
+            paddingVertical: 10, paddingHorizontal: 10,
             borderRadius: 8, alignItems: 'center',
           }}
         >
-          <Text style={{ color: palette.text, fontSize: 11 }}>瓶</Text>
-          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 13 }}>{settings.water.bottleMl}</Text>
+          <Text style={{ color: palette.mute, fontSize: 9 }}>設為</Text>
+          <Text style={{ color: palette.text, fontWeight: '700', fontSize: 13 }}>瓶 {settings.water.bottleMl} →</Text>
         </Pressable>
       </View>
 
@@ -149,12 +152,15 @@ export function WaterCard({ mode = 'full' }: Props) {
           paddingVertical: 12,
           borderRadius: 10,
           alignItems: 'center',
+          shadowColor: palette.primary,
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
+          elevation: 4,
         }}
       >
-        <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 14 }}>📝 記錄 +{picked}ml</Text>
+        <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 15 }}>📝 記錄這 {picked}ml</Text>
       </Pressable>
-
-      <TutorialTip id="water-wheel-pick" delay={1500} />
     </Pressable>
   );
 }

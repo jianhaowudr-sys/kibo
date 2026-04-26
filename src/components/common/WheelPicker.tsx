@@ -18,6 +18,8 @@ type Props<T extends number | string> = {
   width?: number;
   /** 像素風 */
   pixelFont?: boolean;
+  /** 中央選中值字體大小，預設 22 */
+  activeFontSize?: number;
 };
 
 /**
@@ -32,6 +34,7 @@ export function WheelPicker<T extends number | string>({
   formatLabel,
   width = 100,
   pixelFont = false,
+  activeFontSize = 22,
 }: Props<T>) {
   const palette = useThemePalette();
   const lowPower = useLowPower();
@@ -166,11 +169,14 @@ export function WheelPicker<T extends number | string>({
             <View style={{ height: itemHeight, alignItems: 'center', justifyContent: 'center' }}>
               <Text
                 style={{
-                  color: isActive ? palette.text : palette.mute,
-                  fontSize: isActive ? 22 : 18,
-                  fontWeight: isActive ? '700' : '400',
+                  color: isActive ? palette.primary : palette.mute,
+                  fontSize: isActive ? activeFontSize : 16,
+                  fontWeight: isActive ? '800' : '400',
                   opacity: Math.max(0.2, opacity),
                   fontFamily: pixelFont ? 'Cubic11' : undefined,
+                  textShadowColor: isActive ? palette.primary + '40' : undefined,
+                  textShadowOffset: isActive ? { width: 0, height: 1 } : undefined,
+                  textShadowRadius: isActive ? 2 : 0,
                 }}
               >
                 {formatLabel ? formatLabel(item) : String(item)}

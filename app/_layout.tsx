@@ -36,6 +36,7 @@ export default function RootLayout() {
   const loadLowPowerMode = useAppStore((s) => s.loadLowPowerMode);
   const loadCalendarViewMode = useAppStore((s) => s.loadCalendarViewMode);
   const loadStatsLayoutJson = useAppStore((s) => s.loadStatsLayoutJson);
+  const loadOnboardingPetName = useAppStore((s) => s.loadOnboardingPetName);
   const loadAuthSession = useAppStore((s) => s.loadAuthSession);
   const hydrateTutorial = useTutorialStore((s) => s.hydrate);
   const themeMode = useAppStore((s) => s.themeMode);
@@ -76,6 +77,7 @@ export default function RootLayout() {
         await loadLowPowerMode();
         await loadCalendarViewMode();
         await loadStatsLayoutJson();
+        await loadOnboardingPetName();
         await hydrateTutorial();
         await loadAuthSession();
         // 第一次啟動 → 進 onboarding

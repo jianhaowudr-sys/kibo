@@ -45,6 +45,7 @@ export default function ActiveWorkout() {
   const [savingEmoji, setSavingEmoji] = useState('💪');
   const [showHistory, setShowHistory] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [workoutNote, setWorkoutNote] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -125,7 +126,7 @@ export default function ActiveWorkout() {
       await saveAsNewRoutine(opts.saveAsNew.name, opts.saveAsNew.emoji);
     }
     haptic.tapHeavy();
-    const result = await finishWorkout();
+    const result = await finishWorkout(workoutNote.trim() || undefined);
     clearRoutineQueue();
     if (!result) {
       router.back();
@@ -272,6 +273,18 @@ export default function ActiveWorkout() {
         <View className="mb-4">
           <RestTimer autoStartKey={restTriggerKey} />
         </View>
+
+        {/* 訓練備註 */}
+        <TextInput
+          value={workoutNote}
+          onChangeText={setWorkoutNote}
+          placeholder="今天感覺怎樣？有什麼想記下的..."
+          placeholderTextColor={palette.placeholder}
+          multiline
+          maxLength={200}
+          className="bg-kibo-surface text-kibo-text rounded-xl px-4 py-3 mb-4 border border-kibo-card"
+          style={{ minHeight: 50 }}
+        />
 
         <View className="bg-kibo-surface rounded-2xl p-3 border border-kibo-primary mb-3">
           <View className="flex-row items-center justify-between mb-2">
