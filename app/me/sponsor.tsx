@@ -2,34 +2,17 @@ import { View, Text, ScrollView, Pressable, Linking, Alert } from 'react-native'
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as haptic from '@/lib/haptic';
 
-// TODO: 換成真實連結
-const LINEPAY_URL = 'https://line.me/R/'; // ⚠️ Ollie 之後填 Line Pay 個人收款連結
-const JKO_URL = 'https://jkos.com/'; // ⚠️ Ollie 之後填街口個人收款連結
-
-const METHODS = [
-  {
-    name: 'Line Pay',
-    emoji: '💚',
-    desc: '台灣最快速的方式，支援 Line 用戶直接轉帳',
-    url: LINEPAY_URL,
-  },
-  {
-    name: '街口支付',
-    emoji: '🟠',
-    desc: '街口 App 用戶可直接掃描連結轉帳',
-    url: JKO_URL,
-  },
-];
+const JKO_URL = 'https://service.jkopay.com/r/transfer?j=Transfer:900804722';
 
 export default function Sponsor() {
   const palette = useThemePalette();
 
-  const open = async (url: string) => {
+  const open = async () => {
     haptic.tapMedium();
     try {
-      const ok = await Linking.canOpenURL(url);
-      if (ok) await Linking.openURL(url);
-      else Alert.alert('無法開啟連結', url);
+      const ok = await Linking.canOpenURL(JKO_URL);
+      if (ok) await Linking.openURL(JKO_URL);
+      else Alert.alert('無法開啟連結', JKO_URL);
     } catch (e: any) {
       Alert.alert('開啟失敗', e?.message ?? String(e));
     }
@@ -46,21 +29,21 @@ export default function Sponsor() {
         </Text>
       </View>
 
-      {METHODS.map((m) => (
-        <View key={m.name} className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3">
-          <View className="flex-row items-center mb-2">
-            <Text className="text-2xl mr-2">{m.emoji}</Text>
-            <Text className="text-kibo-text font-bold text-base flex-1">{m.name}</Text>
-          </View>
-          <Text className="text-kibo-mute text-xs mb-3">{m.desc}</Text>
-          <Pressable
-            onPress={() => open(m.url)}
-            className="bg-kibo-primary rounded-xl py-3"
-          >
-            <Text className="text-kibo-bg text-center font-bold text-sm">前往贊助</Text>
-          </Pressable>
+      <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3">
+        <View className="flex-row items-center mb-2">
+          <Text className="text-2xl mr-2">🟠</Text>
+          <Text className="text-kibo-text font-bold text-base flex-1">街口支付</Text>
         </View>
-      ))}
+        <Text className="text-kibo-mute text-xs mb-3">
+          街口 App 用戶可直接點擊連結轉帳給作者
+        </Text>
+        <Pressable
+          onPress={open}
+          className="bg-kibo-primary rounded-xl py-3"
+        >
+          <Text className="text-kibo-bg text-center font-bold text-sm">前往街口贊助</Text>
+        </Pressable>
+      </View>
 
       <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mt-4">
         <Text className="text-kibo-mute text-xs text-center">
