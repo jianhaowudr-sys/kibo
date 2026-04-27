@@ -48,7 +48,8 @@
       "expo-sqlite",
       "expo-font",
       "expo-asset",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/with-google-play-token"
     ],
     "experiments": {
       "typedRoutes": true
