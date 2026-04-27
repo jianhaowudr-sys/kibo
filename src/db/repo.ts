@@ -7,6 +7,27 @@ import type {
 
 type Row = Record<string, any>;
 
+// 雲端同步：把要從 Supabase 刪除的 (table, local_id) 排隊，由 cloud_sync.flushPendingDeletions 真正打 DELETE
+export type PendingDeletion = { id: number; tableName: string; localId: number };
+
+export async function enqueueRemoteDelete(tableName: string, localId: number): Promise<void> {
+  await sqliteDb.runAsync(
+    `INSERT OR IGNORE INTO pending_deletions (table_name, local_id, enqueued_at) VALUES (?, ?, ?)`,
+    [tableName, localId, Date.now()],
+  );
+}
+
+export async function listPendingDeletions(): Promise<PendingDeletion[]> {
+  const rs = await sqliteDb.getAllAsync<Row>(
+    `SELECT id, table_name as tableName, local_id as localId FROM pending_deletions ORDER BY id ASC`,
+  );
+  return rs.map((r) => ({ id: r.id, tableName: r.tableName, localId: r.localId }));
+}
+
+export async function clearPendingDeletion(id: number): Promise<void> {
+  await sqliteDb.runAsync(`DELETE FROM pending_deletions WHERE id = ?`, [id]);
+}
+
 const rowToUser = (r: Row): User => ({
   id: r.id,
   name: r.name,
@@ -270,6 +291,7 @@ export async function addSet(data: {
 }
 
 export async function deleteSet(id: number): Promise<void> {
+  await enqueueRemoteDelete('workout_sets', id);
   await sqliteDb.runAsync('DELETE FROM workout_sets WHERE id = ?', [id]);
 }
 
@@ -298,10 +320,14 @@ export async function finishWorkout(workoutId: number, totals: {
 }
 
 export async function cancelWorkout(workoutId: number): Promise<void> {
+  await enqueueRemoteDelete('workouts', workoutId);
   await sqliteDb.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
 }
 
 export async function deleteWorkoutAndRecalc(userId: number, workoutId: number): Promise<void> {
+  const setRows = await sqliteDb.getAllAsync<Row>('SELECT id FROM workout_sets WHERE workout_id = ?', [workoutId]);
+  for (const s of setRows) await enqueueRemoteDelete('workout_sets', s.id);
+  await enqueueRemoteDelete('workouts', workoutId);
   await sqliteDb.runAsync('DELETE FROM workout_sets WHERE workout_id = ?', [workoutId]);
   await sqliteDb.runAsync('DELETE FROM workouts WHERE id = ?', [workoutId]);
 
@@ -595,6 +621,10 @@ export async function updateRoutine(id: number, patch: { name?: string; emoji?: 
 }
 
 export async function deleteRoutine(id: number): Promise<void> {
+  const reRows = await sqliteDb.getAllAsync<Row>('SELECT id FROM routine_exercises WHERE routine_id = ?', [id]);
+  for (const re of reRows) await enqueueRemoteDelete('routine_exercises', re.id);
+  await enqueueRemoteDelete('routines', id);
+  await sqliteDb.runAsync('DELETE FROM routine_exercises WHERE routine_id = ?', [id]);
   await sqliteDb.runAsync('DELETE FROM routines WHERE id = ?', [id]);
 }
 
@@ -622,6 +652,7 @@ export async function addExerciseToRoutine(data: { routineId: number; exerciseId
 }
 
 export async function removeExerciseFromRoutine(id: number): Promise<void> {
+  await enqueueRemoteDelete('routine_exercises', id);
   await sqliteDb.runAsync('DELETE FROM routine_exercises WHERE id = ?', [id]);
 }
 
@@ -728,6 +759,7 @@ export async function updateMeal(id: number, patch: Partial<{
 }
 
 export async function deleteMeal(id: number): Promise<void> {
+  await enqueueRemoteDelete('meals', id);
   await sqliteDb.runAsync('DELETE FROM meals WHERE id = ?', [id]);
 }
 
@@ -795,6 +827,7 @@ export async function createBodyMeasurement(data: Omit<NewBodyMeasurement, 'id' 
 }
 
 export async function deleteBodyMeasurement(id: number): Promise<void> {
+  await enqueueRemoteDelete('body_measurements', id);
   await sqliteDb.runAsync('DELETE FROM body_measurements WHERE id = ?', [id]);
 }
 
@@ -899,6 +932,7 @@ export async function updateCustomFood(id: number, patch: Partial<{
 }
 
 export async function deleteCustomFood(id: number): Promise<void> {
+  await enqueueRemoteDelete('custom_foods', id);
   await sqliteDb.runAsync(`DELETE FROM custom_foods WHERE id = ?`, [id]);
 }
 

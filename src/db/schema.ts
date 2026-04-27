@@ -248,6 +248,13 @@ export const petMessages = sqliteTable('pet_messages', {
   triggerData: text('trigger_data'),
 });
 
+export const pendingDeletions = sqliteTable('pending_deletions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tableName: text('table_name').notNull(),
+  localId: integer('local_id').notNull(),
+  enqueuedAt: integer('enqueued_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export const achievements = sqliteTable('achievements', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: integer('user_id').notNull().references(() => users.id),

@@ -4,6 +4,7 @@
  */
 
 import { sqliteDb } from './client';
+import { enqueueRemoteDelete } from './repo';
 import type {
   WaterLog, NewWaterLog,
   BowelLog, NewBowelLog,
@@ -69,6 +70,7 @@ export async function listWaterBetween(userId: number, fromMs: number, toMs: num
 }
 
 export async function deleteWater(id: number): Promise<void> {
+  await enqueueRemoteDelete('water_logs', id);
   await sqliteDb.runAsync(`DELETE FROM water_logs WHERE id = ?`, [id]);
 }
 
@@ -77,6 +79,7 @@ export async function deleteWaterBatch(batchKey: string): Promise<number[]> {
     `SELECT id FROM water_logs WHERE batch_key = ?`,
     [batchKey],
   );
+  for (const r of rows) await enqueueRemoteDelete('water_logs', r.id as number);
   await sqliteDb.runAsync(`DELETE FROM water_logs WHERE batch_key = ?`, [batchKey]);
   return rows.map((r) => r.id as number);
 }
@@ -124,6 +127,7 @@ export async function updateBowel(id: number, patch: Partial<NewBowelLog>): Prom
 }
 
 export async function deleteBowel(id: number): Promise<void> {
+  await enqueueRemoteDelete('bowel_logs', id);
   await sqliteDb.runAsync(`DELETE FROM bowel_logs WHERE id = ?`, [id]);
 }
 
@@ -188,6 +192,7 @@ export async function listSleepRecent(userId: number, days: number): Promise<Sle
 }
 
 export async function deleteSleep(id: number): Promise<void> {
+  await enqueueRemoteDelete('sleep_logs', id);
   await sqliteDb.runAsync(`DELETE FROM sleep_logs WHERE id = ?`, [id]);
 }
 
@@ -253,6 +258,7 @@ export async function getCurrentCycleDays(userId: number): Promise<PeriodDay[]> 
 }
 
 export async function deletePeriodDay(id: number): Promise<void> {
+  await enqueueRemoteDelete('period_days', id);
   await sqliteDb.runAsync(`DELETE FROM period_days WHERE id = ?`, [id]);
 }
 

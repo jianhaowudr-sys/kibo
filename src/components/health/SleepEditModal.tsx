@@ -82,17 +82,16 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
     }
   }, [visible, defaults, sleepLast]);
 
-  // 計算實際 Date：wake 為「(今天 - offset) 的 wakeH:wakeM」，bed 預設為 wake 前一天的 bedH:bedM
+  // 計算實際 Date：wake 為「(今天 - offset) 的 wakeH:wakeM」
+  // bed 預設為 wake 同天的 bedH:bedM；若 bed 比 wake 晚（跨夜情境，例如 bed 23:00 / wake 07:00）→ 退到前一天
   const computeDates = () => {
     const wake = new Date();
     wake.setDate(wake.getDate() - wakeDayOffset);
     wake.setHours(wakeH, wakeM, 0, 0);
     const bed = new Date(wake);
-    bed.setDate(bed.getDate() - 1);
     bed.setHours(bedH, bedM, 0, 0);
-    // 若 bed 比 wake 晚（罕見：bed 03:00 wake 05:00 同天）→ 把 bed 移回 wake 同天
     if (bed.getTime() >= wake.getTime()) {
-      bed.setDate(bed.getDate() + 1);
+      bed.setDate(bed.getDate() - 1);
     }
     return { bed, wake };
   };
@@ -169,7 +168,7 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
               })}
             </ScrollView>
 
-            <HMRow label={`上床時間（${dayOffsetLabel(wakeDayOffset + 1)}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
+            <HMRow label={`上床時間（${dayOffsetLabel(dayOffsetFromToday(bedDate))}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
             <HMRow label={`起床時間（${dayOffsetLabel(wakeDayOffset)}）`} h={wakeH} m={wakeM} setH={setWakeH} setM={setWakeM} />
 
             <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>時長</Text>

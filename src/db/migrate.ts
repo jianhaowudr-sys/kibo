@@ -241,6 +241,14 @@ CREATE TABLE IF NOT EXISTS custom_foods (
   last_used_at INTEGER,
   created_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS pending_deletions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  local_id INTEGER NOT NULL,
+  enqueued_at INTEGER NOT NULL,
+  UNIQUE(table_name, local_id)
+);
 `;
 
 async function hasColumn(table: string, column: string): Promise<boolean> {

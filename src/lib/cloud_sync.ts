@@ -2,6 +2,40 @@ import { supabase, isSupabaseConfigured } from './supabase';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
+import { listPendingDeletions, clearPendingDeletion } from '@/db/repo';
+
+// 已知會雲端同步的表 — 只 flush 這些，避免有人 enqueue 了 typo 字串就誤刪
+const SYNCABLE_TABLES = new Set([
+  'meals', 'workouts', 'workout_sets', 'body_measurements',
+  'routines', 'routine_exercises', 'custom_foods',
+  'water_logs', 'bowel_logs', 'sleep_logs', 'period_days',
+]);
+
+/**
+ * 把本地排隊的 (table, local_id) 真的去 Supabase delete 掉。
+ * 成功 → clear 該 row；失敗（網路/RLS）→ 留著下次 fullSync 再試。
+ */
+async function flushPendingDeletions(userId: string): Promise<void> {
+  const queue = await listPendingDeletions();
+  for (const item of queue) {
+    if (!SYNCABLE_TABLES.has(item.tableName)) {
+      await clearPendingDeletion(item.id);
+      continue;
+    }
+    try {
+      const { error } = await supabase
+        .from(item.tableName)
+        .delete()
+        .eq('user_id', userId)
+        .eq('local_id', item.localId);
+      if (!error) {
+        await clearPendingDeletion(item.id);
+      }
+    } catch {
+      // 留在 queue，下次再 flush
+    }
+  }
+}
 
 // Convert ms timestamp / Date / string → ISO string for Supabase timestamptz
 function toISO(v: any): string | null {
@@ -497,6 +531,10 @@ export async function fullSync(userId: string): Promise<SyncStats> {
   await pushAchievements(userId);
   await pushHealthTables(userId);
   await pushCustomFoods(userId);
+
+  // 在 push 之後、pull 之前 flush 所有「本地已刪、雲端還在」的 tombstone
+  // 否則接下來的 pull 會把這些已刪資料重新塞回本地
+  await flushPendingDeletions(userId);
 
   stats.pushedWorkouts = Number(w0[0]?.c ?? 0);
   stats.pushedSets = Number(s0[0]?.c ?? 0);
