@@ -42,6 +42,7 @@ dev-server.log
 # secrets
 .supabase-tables.sql
 .supabase-token.txt
+google-play-service-account.json
 
 # build artifacts
 *.apk

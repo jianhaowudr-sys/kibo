@@ -40,9 +40,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "TODO_APPLE_ID@example.com",
-        "ascAppId": "TODO_ASC_APP_ID",
-        "appleTeamId": "TODO_TEAM_ID"
+        "appleId": "m013020082@gmail.com",
+        "ascAppId": "6764039298",
+        "appleTeamId": "XGY266T6Y8"
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-service-account.json",
