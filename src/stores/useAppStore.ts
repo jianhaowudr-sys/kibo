@@ -128,6 +128,7 @@ type Actions = {
   refreshTodayMeals: () => Promise<void>;
   addMeal: (data: Omit<import('@/db/schema').NewMeal, 'id' | 'createdAt' | 'userId'> & { loggedAt: Date | number }) => Promise<number>;
   deleteMeal: (id: number) => Promise<void>;
+  updateMealById: (id: number, patch: any) => Promise<void>;
 
   setThemeMode: (mode: ThemeMode) => Promise<void>;
   loadThemeMode: () => Promise<void>;
@@ -641,6 +642,12 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     await get().refreshTodayMeals();
     get().enqueueSync?.();
     return id;
+  },
+
+  updateMealById: async (id, patch) => {
+    await repo.updateMeal(id, patch);
+    await get().refreshTodayMeals();
+    get().enqueueSync?.();
   },
 
   deleteMeal: async (id) => {

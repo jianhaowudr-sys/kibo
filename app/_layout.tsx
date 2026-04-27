@@ -141,6 +141,7 @@ export default function RootLayout() {
           <Stack.Screen name="body/[id]" options={{ title: '紀錄詳情' }} />
           <Stack.Screen name="diet/new" options={{ title: '記錄一餐', presentation: 'modal' }} />
           <Stack.Screen name="diet/[id]" options={{ title: '飲食詳情' }} />
+          <Stack.Screen name="diet/edit/[id]" options={{ title: '編輯飲食', presentation: 'modal' }} />
           <Stack.Screen name="egg/hatch" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
           <Stack.Screen name="health/water" options={{ title: '喝水紀錄' }} />
           <Stack.Screen name="health/bowel" options={{ title: '排便紀錄' }} />

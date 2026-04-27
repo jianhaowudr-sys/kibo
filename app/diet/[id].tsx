@@ -128,12 +128,20 @@ export default function MealDetail() {
         </View>
       )}
 
-      <Pressable
-        onPress={onDelete}
-        className="bg-kibo-danger/20 border border-kibo-danger rounded-2xl py-3"
-      >
-        <Text className="text-kibo-danger text-center font-semibold">刪除這餐</Text>
-      </Pressable>
+      <View className="flex-row gap-2">
+        <Pressable
+          onPress={() => { haptic.tapLight(); router.push(`/diet/edit/${m.id}` as any); }}
+          className="flex-1 bg-kibo-primary rounded-2xl py-3"
+        >
+          <Text className="text-kibo-bg text-center font-bold">✎ 編輯</Text>
+        </Pressable>
+        <Pressable
+          onPress={onDelete}
+          className="flex-1 bg-kibo-danger/20 border border-kibo-danger rounded-2xl py-3"
+        >
+          <Text className="text-kibo-danger text-center font-semibold">🗑 刪除</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 }

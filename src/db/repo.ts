@@ -706,6 +706,27 @@ export async function createMeal(data: Omit<NewMeal, 'id' | 'createdAt'> & { log
   return result.lastInsertRowId as number;
 }
 
+export async function updateMeal(id: number, patch: Partial<{
+  loggedAt: number; mealType: string; title: string | null; itemsJson: string | null;
+  caloriesKcal: number | null; proteinG: number | null; carbG: number | null; fatG: number | null;
+  photoUri: string | null; note: string | null;
+}>): Promise<void> {
+  const fields: string[] = []; const values: any[] = [];
+  if (patch.loggedAt !== undefined) { fields.push('logged_at = ?'); values.push(patch.loggedAt); }
+  if (patch.mealType !== undefined) { fields.push('meal_type = ?'); values.push(patch.mealType); }
+  if (patch.title !== undefined) { fields.push('title = ?'); values.push(patch.title); }
+  if (patch.itemsJson !== undefined) { fields.push('items_json = ?'); values.push(patch.itemsJson); }
+  if (patch.caloriesKcal !== undefined) { fields.push('calories_kcal = ?'); values.push(patch.caloriesKcal); }
+  if (patch.proteinG !== undefined) { fields.push('protein_g = ?'); values.push(patch.proteinG); }
+  if (patch.carbG !== undefined) { fields.push('carb_g = ?'); values.push(patch.carbG); }
+  if (patch.fatG !== undefined) { fields.push('fat_g = ?'); values.push(patch.fatG); }
+  if (patch.photoUri !== undefined) { fields.push('photo_uri = ?'); values.push(patch.photoUri); }
+  if (patch.note !== undefined) { fields.push('note = ?'); values.push(patch.note); }
+  if (fields.length === 0) return;
+  values.push(id);
+  await sqliteDb.runAsync(`UPDATE meals SET ${fields.join(', ')} WHERE id = ?`, values);
+}
+
 export async function deleteMeal(id: number): Promise<void> {
   await sqliteDb.runAsync('DELETE FROM meals WHERE id = ?', [id]);
 }
