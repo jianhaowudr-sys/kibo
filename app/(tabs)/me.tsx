@@ -827,138 +827,25 @@ export default function MeScreen() {
               </View>
             )}
 
-            {/* 🎨 外觀（合併：明暗模式 + 視覺風格 + 低負擔模式）*/}
-            <Panel
-              id="appearance"
-              open={openPanel === 'appearance'}
-              onToggle={togglePanel}
-              icon="🎨"
-              title="外觀"
-              summary={`${themeMode === 'light' ? '白天' : themeMode === 'dark' ? '夜晚' : '系統'} · ${themeStyle === 'pixel' ? '像素風' : '現代'}${lowPowerMode ? ' · 低負擔' : ''}`}
-            >
-              <Text className="text-kibo-mute text-xs mb-2">明暗模式</Text>
-              <View className="flex-row gap-2 mb-4">
-                {([
-                  { code: 'light' as const, label: '☀️ 白天' },
-                  { code: 'dark' as const, label: '🌙 夜晚' },
-                  { code: 'system' as const, label: '⚙️ 系統' },
-                ]).map((o) => {
-                  const active = themeMode === o.code;
-                  return (
-                    <Pressable
-                      key={o.code}
-                      onPressIn={() => haptic.tapLight()}
-                      onPress={() => chooseTheme(o.code)}
-                      className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
-                    >
-                      <Text className={`font-semibold text-sm ${active ? 'text-kibo-bg' : 'text-kibo-text'}`}>
-                        {o.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <Text className="text-kibo-mute text-xs mb-2">視覺風格</Text>
-              <View className="flex-row gap-2 mb-3">
-                {([
-                  { code: 'modern' as const, label: '🌐 現代' },
-                  { code: 'pixel' as const, label: '👾 像素風' },
-                ]).map((o) => {
-                  const active = themeStyle === o.code;
-                  return (
-                    <Pressable
-                      key={o.code}
-                      onPressIn={() => haptic.tapLight()}
-                      onPress={() => chooseThemeStyle(o.code)}
-                      className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
-                    >
-                      <Text className={`font-semibold text-sm ${active ? 'text-kibo-bg' : 'text-kibo-text'}`}>
-                        {o.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <Text className="text-kibo-mute text-[10px] mb-2">預覽：</Text>
-              <PixelCard variant="default" padding={12} style={{ marginBottom: 8 }}>
-                <Text style={{ color: palette.text, fontFamily: themeStyle === 'pixel' ? 'Cubic11' : undefined, fontSize: 14 }}>
-                  Kibo 像素卡片
-                </Text>
-                <Text style={{ color: palette.mute, fontSize: 11, marginTop: 4 }}>
-                  chunky border + hard shadow
-                </Text>
-              </PixelCard>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-                <PixelButton label="按按看" variant="primary" size="sm" />
-                <PixelButton label="Accent" variant="accent" size="sm" />
-              </View>
-
-              {/* 低負擔模式 */}
-              <Text className="text-kibo-mute text-xs mb-2">效能</Text>
+            {/* ── 第二列：💌 意見回饋 + ☕ 贊助作者 並排 ── */}
+            <View className="flex-row gap-3 mb-2">
               <Pressable
-                onPress={() => { haptic.tapLight(); setLowPowerMode(!lowPowerMode); }}
-                className={`flex-row items-center justify-between p-3 rounded-xl ${lowPowerMode ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+                onPress={() => { haptic.tapLight(); router.push('/me/feedback' as any); }}
+                className="flex-1 bg-kibo-surface rounded-2xl p-4 border border-kibo-card items-center"
               >
-                <View style={{ flex: 1 }}>
-                  <Text className={`font-semibold ${lowPowerMode ? 'text-kibo-bg' : 'text-kibo-text'}`}>
-                    ⚡ 低負擔模式
-                  </Text>
-                  <Text className={`text-[10px] mt-0.5 ${lowPowerMode ? 'text-kibo-bg/70' : 'text-kibo-mute'}`}>
-                    卡頓時打開：滾輪退化成按鈕、像素動畫暫停、AI 序列分析
-                  </Text>
-                </View>
-                <Text className={`${lowPowerMode ? 'text-kibo-bg' : 'text-kibo-text'} font-bold ml-2`}>
-                  {lowPowerMode ? 'ON' : 'OFF'}
-                </Text>
+                <Text className="text-2xl mb-1">💌</Text>
+                <Text className="text-kibo-text font-semibold text-xs">意見回饋</Text>
               </Pressable>
-            </Panel>
+              <Pressable
+                onPress={() => { haptic.tapLight(); router.push('/me/sponsor' as any); }}
+                className="flex-1 bg-kibo-surface rounded-2xl p-4 border border-kibo-card items-center"
+              >
+                <Text className="text-2xl mb-1">☕</Text>
+                <Text className="text-kibo-text font-semibold text-xs">贊助作者</Text>
+              </Pressable>
+            </View>
 
-            {/* 🧬 健康偏好 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/health-settings' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-text font-semibold flex-1">🧬 健康偏好</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
-
-            {/* 🍽 我的食物庫 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/food-library' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-text font-semibold flex-1">🍽 我的食物庫</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
-
-            {/* 💌 意見回饋 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/feedback' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-text font-semibold flex-1">💌 意見回饋</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
-
-            {/* ☕ 贊助作者 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/sponsor' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-text font-semibold flex-1">☕ 贊助作者</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
-
-            {/* ⚠️ 刪除帳號 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/delete-account' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-danger/40 mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-danger font-semibold flex-1">⚠️ 刪除帳號</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
+            <SectionHeader label="個人" />
 
             {/* 🙋 個人資料 */}
             <Panel
@@ -1091,6 +978,221 @@ export default function MeScreen() {
               </Pressable>
             </Panel>
 
+            {/* 🧬 健康偏好 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/health-settings' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">🧬 健康偏好</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            {/* 🍽 我的食物庫 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/food-library' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">🍽 我的食物庫</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            <SectionHeader label="帳號" />
+
+            {/* 💾 資料備份 */}
+            <Panel
+              id="backup"
+              open={openPanel === 'backup'}
+              onToggle={togglePanel}
+              icon="💾"
+              title="資料備份"
+              summary="匯出 / 匯入所有紀錄"
+            >
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={async () => {
+                  try {
+                    await exportAll();
+                    haptic.success();
+                  } catch (e: any) {
+                    haptic.error();
+                    Alert.alert('匯出失敗', e?.message ?? String(e));
+                  }
+                }}
+                className="bg-kibo-primary/20 border border-kibo-primary rounded-xl py-2.5 mb-2"
+              >
+                <Text className="text-kibo-primary text-center font-semibold">📤 匯出全部資料</Text>
+              </Pressable>
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={() => {
+                  Alert.alert(
+                    '匯入備份？',
+                    '會覆蓋目前所有資料。建議先匯出一份備份。',
+                    [
+                      { text: '取消', style: 'cancel' },
+                      {
+                        text: '選擇檔案匯入',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            const result = await importAll();
+                            if (result.imported) {
+                              await bootstrap();
+                              haptic.success();
+                              Alert.alert('✅ 匯入成功', `${result.tables} 張表、${result.rows} 筆紀錄已還原`);
+                            }
+                          } catch (e: any) {
+                            haptic.error();
+                            Alert.alert('匯入失敗', e?.message ?? String(e));
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+                className="bg-kibo-accent/20 border border-kibo-accent rounded-xl py-2.5 mb-2"
+              >
+                <Text className="text-kibo-accent text-center font-semibold">📥 從備份檔匯入（JSON）</Text>
+              </Pressable>
+
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={() => {
+                  Alert.alert(
+                    '從 Strong App CSV 匯入',
+                    '會「累加」到你現有資料，不會覆蓋。同日期已存在的訓練會自動跳過。\n\n支援格式：Strong / Hevy 等健身 app 匯出的標準 CSV。',
+                    [
+                      { text: '取消', style: 'cancel' },
+                      {
+                        text: '選擇 CSV 匯入',
+                        onPress: async () => {
+                          try {
+                            const result = await importStrongCSV();
+                            if (!result) return;
+                            await bootstrap();
+                            haptic.success();
+                            Alert.alert(
+                              '✅ CSV 匯入完成',
+                              `新增 ${result.workoutsCreated} 次訓練\n新增 ${result.setsCreated} 組紀錄\n新增 ${result.newExercises} 個自訂動作\n略過 ${result.skippedRows} 筆（同日期已存在）`,
+                            );
+                          } catch (e: any) {
+                            haptic.error();
+                            Alert.alert('匯入失敗', e?.message ?? String(e));
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+                className="bg-kibo-success/20 border border-kibo-success rounded-xl py-2.5"
+              >
+                <Text className="text-kibo-success text-center font-semibold">📊 從 Strong CSV 匯入（累加）</Text>
+              </Pressable>
+
+              <Text className="text-kibo-mute text-[10px] mt-2 leading-4">
+                匯出 = 完整備份（JSON）；Strong CSV = 累加匯入歷史紀錄不覆蓋。
+              </Text>
+            </Panel>
+
+            {/* ⚠️ 刪除帳號 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/delete-account' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-danger/40 mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-danger font-semibold flex-1">⚠️ 刪除帳號</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            <SectionHeader label="App" />
+
+            {/* 🎨 外觀（合併：明暗模式 + 視覺風格 + 低負擔模式）*/}
+            <Panel
+              id="appearance"
+              open={openPanel === 'appearance'}
+              onToggle={togglePanel}
+              icon="🎨"
+              title="外觀"
+              summary={`${themeMode === 'light' ? '白天' : themeMode === 'dark' ? '夜晚' : '系統'} · ${themeStyle === 'pixel' ? '像素風' : '現代'}${lowPowerMode ? ' · 低負擔' : ''}`}
+            >
+              <Text className="text-kibo-mute text-xs mb-2">明暗模式</Text>
+              <View className="flex-row gap-2 mb-4">
+                {([
+                  { code: 'light' as const, label: '☀️ 白天' },
+                  { code: 'dark' as const, label: '🌙 夜晚' },
+                  { code: 'system' as const, label: '⚙️ 系統' },
+                ]).map((o) => {
+                  const active = themeMode === o.code;
+                  return (
+                    <Pressable
+                      key={o.code}
+                      onPressIn={() => haptic.tapLight()}
+                      onPress={() => chooseTheme(o.code)}
+                      className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+                    >
+                      <Text className={`font-semibold text-sm ${active ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                        {o.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text className="text-kibo-mute text-xs mb-2">視覺風格</Text>
+              <View className="flex-row gap-2 mb-3">
+                {([
+                  { code: 'modern' as const, label: '🌐 現代' },
+                  { code: 'pixel' as const, label: '👾 像素風' },
+                ]).map((o) => {
+                  const active = themeStyle === o.code;
+                  return (
+                    <Pressable
+                      key={o.code}
+                      onPressIn={() => haptic.tapLight()}
+                      onPress={() => chooseThemeStyle(o.code)}
+                      className={`flex-1 py-3 rounded-xl items-center ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+                    >
+                      <Text className={`font-semibold text-sm ${active ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                        {o.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text className="text-kibo-mute text-[10px] mb-2">預覽：</Text>
+              <PixelCard variant="default" padding={12} style={{ marginBottom: 8 }}>
+                <Text style={{ color: palette.text, fontFamily: themeStyle === 'pixel' ? 'Cubic11' : undefined, fontSize: 14 }}>
+                  Kibo 像素卡片
+                </Text>
+                <Text style={{ color: palette.mute, fontSize: 11, marginTop: 4 }}>
+                  chunky border + hard shadow
+                </Text>
+              </PixelCard>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                <PixelButton label="按按看" variant="primary" size="sm" />
+                <PixelButton label="Accent" variant="accent" size="sm" />
+              </View>
+
+              {/* 低負擔模式 */}
+              <Text className="text-kibo-mute text-xs mb-2">效能</Text>
+              <Pressable
+                onPress={() => { haptic.tapLight(); setLowPowerMode(!lowPowerMode); }}
+                className={`flex-row items-center justify-between p-3 rounded-xl ${lowPowerMode ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text className={`font-semibold ${lowPowerMode ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                    ⚡ 低負擔模式
+                  </Text>
+                  <Text className={`text-[10px] mt-0.5 ${lowPowerMode ? 'text-kibo-bg/70' : 'text-kibo-mute'}`}>
+                    卡頓時打開：滾輪退化成按鈕、像素動畫暫停、AI 序列分析
+                  </Text>
+                </View>
+                <Text className={`${lowPowerMode ? 'text-kibo-bg' : 'text-kibo-text'} font-bold ml-2`}>
+                  {lowPowerMode ? 'ON' : 'OFF'}
+                </Text>
+              </Pressable>
+            </Panel>
+
             {/* 🤖 AI 判讀 */}
             <Panel
               id="ai"
@@ -1207,101 +1309,7 @@ export default function MeScreen() {
               </Pressable>
             </Panel>
 
-            {/* 💾 資料備份 */}
-            <Panel
-              id="backup"
-              open={openPanel === 'backup'}
-              onToggle={togglePanel}
-              icon="💾"
-              title="資料備份"
-              summary="匯出 / 匯入所有紀錄"
-            >
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={async () => {
-                  try {
-                    await exportAll();
-                    haptic.success();
-                  } catch (e: any) {
-                    haptic.error();
-                    Alert.alert('匯出失敗', e?.message ?? String(e));
-                  }
-                }}
-                className="bg-kibo-primary/20 border border-kibo-primary rounded-xl py-2.5 mb-2"
-              >
-                <Text className="text-kibo-primary text-center font-semibold">📤 匯出全部資料</Text>
-              </Pressable>
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={() => {
-                  Alert.alert(
-                    '匯入備份？',
-                    '會覆蓋目前所有資料。建議先匯出一份備份。',
-                    [
-                      { text: '取消', style: 'cancel' },
-                      {
-                        text: '選擇檔案匯入',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            const result = await importAll();
-                            if (result.imported) {
-                              await bootstrap();
-                              haptic.success();
-                              Alert.alert('✅ 匯入成功', `${result.tables} 張表、${result.rows} 筆紀錄已還原`);
-                            }
-                          } catch (e: any) {
-                            haptic.error();
-                            Alert.alert('匯入失敗', e?.message ?? String(e));
-                          }
-                        },
-                      },
-                    ],
-                  );
-                }}
-                className="bg-kibo-accent/20 border border-kibo-accent rounded-xl py-2.5 mb-2"
-              >
-                <Text className="text-kibo-accent text-center font-semibold">📥 從備份檔匯入（JSON）</Text>
-              </Pressable>
-
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={() => {
-                  Alert.alert(
-                    '從 Strong App CSV 匯入',
-                    '會「累加」到你現有資料，不會覆蓋。同日期已存在的訓練會自動跳過。\n\n支援格式：Strong / Hevy 等健身 app 匯出的標準 CSV。',
-                    [
-                      { text: '取消', style: 'cancel' },
-                      {
-                        text: '選擇 CSV 匯入',
-                        onPress: async () => {
-                          try {
-                            const result = await importStrongCSV();
-                            if (!result) return;
-                            await bootstrap();
-                            haptic.success();
-                            Alert.alert(
-                              '✅ CSV 匯入完成',
-                              `新增 ${result.workoutsCreated} 次訓練\n新增 ${result.setsCreated} 組紀錄\n新增 ${result.newExercises} 個自訂動作\n略過 ${result.skippedRows} 筆（同日期已存在）`,
-                            );
-                          } catch (e: any) {
-                            haptic.error();
-                            Alert.alert('匯入失敗', e?.message ?? String(e));
-                          }
-                        },
-                      },
-                    ],
-                  );
-                }}
-                className="bg-kibo-success/20 border border-kibo-success rounded-xl py-2.5"
-              >
-                <Text className="text-kibo-success text-center font-semibold">📊 從 Strong CSV 匯入（累加）</Text>
-              </Pressable>
-
-              <Text className="text-kibo-mute text-[10px] mt-2 leading-4">
-                匯出 = 完整備份（JSON）；Strong CSV = 累加匯入歷史紀錄不覆蓋。
-              </Text>
-            </Panel>
+            <SectionHeader label="危險區" />
 
             {/* ⚠️ 進階 */}
             <Panel
@@ -1362,6 +1370,16 @@ function DeltaCard({
         {delta > 0 ? '+' : ''}{delta}
         <Text className="text-kibo-mute text-xs"> {unit}</Text>
       </Text>
+    </View>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <View className="flex-row items-center mt-4 mb-2 px-1">
+      <View className="h-[1px] flex-1 bg-kibo-card" />
+      <Text className="text-kibo-mute text-[11px] font-bold mx-3 tracking-widest">{label}</Text>
+      <View className="h-[1px] flex-1 bg-kibo-card" />
     </View>
   );
 }
