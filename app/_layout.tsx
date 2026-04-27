@@ -151,6 +151,9 @@ export default function RootLayout() {
           <Stack.Screen name="me/food-library/index" options={{ title: '我的食物庫' }} />
           <Stack.Screen name="me/food-library/new" options={{ title: '新增食物', presentation: 'modal' }} />
           <Stack.Screen name="me/food-library/[id]" options={{ title: '編輯食物' }} />
+          <Stack.Screen name="me/feedback" options={{ title: '意見回饋', presentation: 'modal' }} />
+          <Stack.Screen name="me/sponsor" options={{ title: '贊助作者', presentation: 'modal' }} />
+          <Stack.Screen name="me/delete-account" options={{ title: '刪除帳號', presentation: 'modal' }} />
           <Stack.Screen name="dashboard/customize" options={{ title: '自訂首頁', presentation: 'modal' }} />
           <Stack.Screen name="stats/customize" options={{ title: '自訂數據', presentation: 'modal' }} />
           <Stack.Screen name="onboarding/index" options={{ headerShown: false, presentation: 'fullScreenModal' }} />

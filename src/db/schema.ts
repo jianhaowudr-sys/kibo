@@ -115,10 +115,17 @@ export const workoutSets = sqliteTable('workout_sets', {
   reps: integer('reps'),
   durationSec: integer('duration_sec'),
   distanceM: real('distance_m'),
+  // 游泳專用：自由式 / 蛙式 / 仰式 / 蝶式 / 混合 / 其他
+  swimStroke: text('swim_stroke'),
+  // 跑步機 / 飛輪：坡度（%）+ 速率（km/h）
+  inclinePct: real('incline_pct'),
+  speedKmh: real('speed_kmh'),
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
   exp: integer('exp').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+export type SwimStroke = 'freestyle' | 'breast' | 'back' | 'butterfly' | 'mixed' | 'other';
 
 export const eggs = sqliteTable('eggs', {
   id: integer('id').primaryKey({ autoIncrement: true }),

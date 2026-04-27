@@ -73,6 +73,13 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
 }
 
+export async function deleteAccount(): Promise<void> {
+  if (!isSupabaseConfigured()) throw new AuthError('not_configured', '尚未設定 Supabase');
+  const { error } = await supabase.rpc('delete_my_account');
+  if (error) throw translateAuthError(error);
+  await supabase.auth.signOut();
+}
+
 export async function getCurrentSession(): Promise<Session | null> {
   const { data } = await supabase.auth.getSession();
   return data.session;

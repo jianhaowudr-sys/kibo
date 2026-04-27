@@ -128,18 +128,19 @@ export default function HomeScreen() {
     if (!settings.sleep.wakePrompt.enabled) return;
     const now = new Date();
     if (now.getHours() < settings.sleep.wakePrompt.afterHour) return;
-    // 檢查昨晚是否已記錄
-    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
-    const dayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
-    if (sleepLast?.dayKey === dayKey) return;
-    // 也檢查今早起床（早起記錄會 dayKey 是今天）
     const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    if (sleepLast?.dayKey === todayKey) return;
-    // 啟動 prompt（一天只跳一次：用 sessionStorage in-memory flag）
-    if ((global as any).__kiboSleepPromptShown !== todayKey) {
-      (global as any).__kiboSleepPromptShown = todayKey;
+    // 已登記今天 / 昨晚的睡眠 → 不跳
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+    if (sleepLast?.dayKey === todayKey || sleepLast?.dayKey === yesterdayKey) return;
+    // 持久化：今天已跳過就不再跳（重啟 App 也記得）
+    (async () => {
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const last = await AsyncStorage.getItem('@kibo/sleep_prompt_last_day');
+      if (last === todayKey) return;
+      await AsyncStorage.setItem('@kibo/sleep_prompt_last_day', todayKey);
       setTimeout(() => setWakePromptOpen(true), 800);
-    }
+    })();
   }, [settings.sleep.wakePrompt.enabled, settings.sleep.wakePrompt.afterHour, sleepLast]);
 
   return (

@@ -41,6 +41,19 @@ export function ExerciseSetTable({
   const useMinutes = exercise.unit === 'minutes';
   const useMeters = exercise.unit === 'meters';
 
+  // 動作類型偵測（從動作名稱判斷是否需要顯示專屬欄位）
+  const exName = (exercise.name ?? '').toLowerCase();
+  const isSwim = exName.includes('游泳') || exName.includes('swim');
+  const isTreadmill = exName.includes('跑步機') || exName.includes('treadmill');
+
+  const SWIM_STROKES: { code: string; label: string }[] = [
+    { code: 'freestyle', label: '自由式' },
+    { code: 'breast', label: '蛙式' },
+    { code: 'back', label: '仰式' },
+    { code: 'butterfly', label: '蝶式' },
+    { code: 'mixed', label: '混合' },
+  ];
+
   return (
     <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card">
       <View className="flex-row items-center justify-between mb-3">
@@ -189,6 +202,73 @@ export function ExerciseSetTable({
             </View>
           );
         })}
+
+        {/* 游泳 / 跑步機專屬欄位（套用到所有 planned set；歷史 done set 顯示 read-only） */}
+        {isSwim && rows.some((r) => r.kind === 'planned') && (
+          <View className="bg-kibo-bg/40 rounded-xl p-3 mt-2">
+            <Text className="text-kibo-mute text-[10px] mb-2">🏊 游泳姿勢（套用本組）</Text>
+            <View className="flex-row flex-wrap gap-1.5">
+              {SWIM_STROKES.map((s) => {
+                const firstPlanned = rows.find((r) => r.kind === 'planned') as any;
+                const active = firstPlanned?.set?.swimStroke === s.code;
+                return (
+                  <Pressable
+                    key={s.code}
+                    onPress={() => {
+                      haptic.tapLight();
+                      rows.forEach((r) => {
+                        if (r.kind === 'planned') {
+                          onUpdatePlanned(r.set.key, { swimStroke: s.code });
+                        }
+                      });
+                    }}
+                    className={`px-2.5 py-1 rounded-full ${active ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+                  >
+                    <Text className={`text-[11px] ${active ? 'text-kibo-bg font-bold' : 'text-kibo-text'}`}>
+                      {s.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {isTreadmill && rows.some((r) => r.kind === 'planned') && (
+          <View className="bg-kibo-bg/40 rounded-xl p-3 mt-2">
+            <Text className="text-kibo-mute text-[10px] mb-2">🏃 跑步機坡度 / 速率（套用本組）</Text>
+            <View className="flex-row gap-2">
+              <View className="flex-1">
+                <Text className="text-kibo-mute text-[10px] mb-1">坡度 %</Text>
+                <NumInput
+                  value={(() => {
+                    const fp = rows.find((r) => r.kind === 'planned') as any;
+                    return fp?.set?.inclinePct != null ? String(fp.set.inclinePct) : '';
+                  })()}
+                  onChangeNumber={(v) => {
+                    rows.forEach((r) => {
+                      if (r.kind === 'planned') onUpdatePlanned(r.set.key, { inclinePct: v });
+                    });
+                  }}
+                />
+              </View>
+              <View className="flex-1">
+                <Text className="text-kibo-mute text-[10px] mb-1">速率 km/h</Text>
+                <NumInput
+                  value={(() => {
+                    const fp = rows.find((r) => r.kind === 'planned') as any;
+                    return fp?.set?.speedKmh != null ? String(fp.set.speedKmh) : '';
+                  })()}
+                  onChangeNumber={(v) => {
+                    rows.forEach((r) => {
+                      if (r.kind === 'planned') onUpdatePlanned(r.set.key, { speedKmh: v });
+                    });
+                  }}
+                />
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
       <Pressable

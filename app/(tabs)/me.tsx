@@ -658,9 +658,52 @@ export default function MeScreen() {
                     await logout();
                     haptic.success();
                   }}
-                  className="bg-kibo-danger/20 border border-kibo-danger rounded-xl py-2"
+                  className="bg-kibo-danger/20 border border-kibo-danger rounded-xl py-2 mb-2"
                 >
                   <Text className="text-kibo-danger text-center font-semibold text-sm">登出</Text>
+                </Pressable>
+                <Pressable
+                  onPressIn={() => haptic.tapLight()}
+                  onPress={() => {
+                    Alert.alert(
+                      '永久刪除帳號',
+                      '這會立即刪除你的雲端帳號與所有同步資料（訓練、飲食、健康、寵物、體組成等），且無法復原。\n\n本機資料會保留，重新註冊也不會帶回舊資料。\n\n確定刪除嗎？',
+                      [
+                        { text: '取消', style: 'cancel' },
+                        {
+                          text: '永久刪除',
+                          style: 'destructive',
+                          onPress: () => {
+                            Alert.alert(
+                              '最後確認',
+                              '確認永久刪除？',
+                              [
+                                { text: '取消', style: 'cancel' },
+                                {
+                                  text: '我確定刪除',
+                                  style: 'destructive',
+                                  onPress: async () => {
+                                    try {
+                                      const { deleteAccount } = await import('@/lib/auth');
+                                      await deleteAccount();
+                                      haptic.success();
+                                      Alert.alert('帳號已刪除', '你的雲端帳號與資料已永久移除。');
+                                    } catch (e: any) {
+                                      haptic.error();
+                                      Alert.alert('刪除失敗', e?.message ?? String(e));
+                                    }
+                                  },
+                                },
+                              ],
+                            );
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  className="border border-kibo-danger rounded-xl py-2"
+                >
+                  <Text className="text-kibo-danger text-center font-semibold text-xs">永久刪除帳號</Text>
                 </Pressable>
               </View>
             ) : (
@@ -887,6 +930,33 @@ export default function MeScreen() {
               className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
             >
               <Text className="text-kibo-text font-semibold flex-1">🍽 我的食物庫</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            {/* 💌 意見回饋 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/feedback' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">💌 意見回饋</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            {/* ☕ 贊助作者 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/sponsor' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-text font-semibold flex-1">☕ 贊助作者</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
+
+            {/* ⚠️ 刪除帳號 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/delete-account' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-danger/40 mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-danger font-semibold flex-1">⚠️ 刪除帳號</Text>
               <Text className="text-kibo-mute">▶</Text>
             </Pressable>
 

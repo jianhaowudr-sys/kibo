@@ -13,6 +13,9 @@ export type PlannedSet = {
   reps?: number | null;
   durationSec?: number | null;
   distanceM?: number | null;
+  swimStroke?: string | null;
+  inclinePct?: number | null;
+  speedKmh?: number | null;
 };
 import * as repo from '@/db/repo';
 import { PET_SPECIES } from '@/data/exercises';
@@ -29,6 +32,9 @@ export type ActiveSet = {
   reps?: number | null;
   durationSec?: number | null;
   distanceM?: number | null;
+  swimStroke?: string | null;
+  inclinePct?: number | null;
+  speedKmh?: number | null;
   exp: number;
   isPR?: 'volume' | 'duration' | 'distance' | null;
 };
@@ -374,6 +380,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       reps: data.reps ?? null,
       durationSec: data.durationSec ?? null,
       distanceM: data.distanceM ?? null,
+      swimStroke: data.swimStroke ?? null,
+      inclinePct: data.inclinePct ?? null,
+      speedKmh: data.speedKmh ?? null,
     };
     const exp = calcSetExp(exercise, setInput);
     const id = await repo.addSet({
@@ -569,6 +578,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       reps: planned.reps ?? null,
       durationSec: planned.durationSec ?? null,
       distanceM: planned.distanceM ?? null,
+      swimStroke: planned.swimStroke ?? null,
+      inclinePct: planned.inclinePct ?? null,
+      speedKmh: planned.speedKmh ?? null,
     });
     get().removePlannedSet(exerciseId, key);
   },
@@ -1178,6 +1190,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
           reps: number | null;
           durationSec: number | null;
           distanceM: number | null;
+          swimStroke?: string | null;
+          inclinePct?: number | null;
+          speedKmh?: number | null;
         }>;
         for (const s of snap) {
           const ex = byId.get(s.exerciseId);
@@ -1189,6 +1204,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
             reps: s.reps,
             durationSec: s.durationSec,
             distanceM: s.distanceM,
+            swimStroke: s.swimStroke ?? null,
+            inclinePct: s.inclinePct ?? null,
+            speedKmh: s.speedKmh ?? null,
           });
         }
       } catch {}
@@ -1280,32 +1298,72 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   clearTempSelectedIds: () => set({ tempSelectedExerciseIds: [] }),
 
   saveRoutineSnapshot: async (routineId) => {
-    const { activeSets } = get();
-    const snap = activeSets.map((s) => ({
-      exerciseId: s.exercise.id,
-      orderIdx: s.orderIdx,
-      weight: s.weight ?? null,
-      reps: s.reps ?? null,
-      durationSec: s.durationSec ?? null,
-      distanceM: s.distanceM ?? null,
-    }));
+    // snapshot = activeSets（這次完成的）+ 仍 planned 但未做的
+    // 保留未做動作的舊重量／次數，下次開啟課表仍 pre-fill
+    const { activeSets, plannedSetsByExercise, routineQueue } = get();
+    const snap: Array<{
+      exerciseId: number; orderIdx: number;
+      weight: number | null; reps: number | null;
+      durationSec: number | null; distanceM: number | null;
+      swimStroke?: string | null; inclinePct?: number | null; speedKmh?: number | null;
+    }> = [];
+
+    activeSets.forEach((s) => {
+      snap.push({
+        exerciseId: s.exercise.id,
+        orderIdx: s.orderIdx,
+        weight: s.weight ?? null,
+        reps: s.reps ?? null,
+        durationSec: s.durationSec ?? null,
+        distanceM: s.distanceM ?? null,
+        swimStroke: s.swimStroke ?? null,
+        inclinePct: s.inclinePct ?? null,
+        speedKmh: s.speedKmh ?? null,
+      });
+    });
+
+    // 加入仍在 routineQueue 但這次沒完成的動作的 planned set（保留 pre-fill 值）
+    let nextOrder = activeSets.length;
+    for (const ex of routineQueue) {
+      const planned = plannedSetsByExercise[ex.id] ?? [];
+      for (const p of planned) {
+        snap.push({
+          exerciseId: ex.id,
+          orderIdx: nextOrder++,
+          weight: p.weight ?? null,
+          reps: p.reps ?? null,
+          durationSec: p.durationSec ?? null,
+          distanceM: p.distanceM ?? null,
+          swimStroke: p.swimStroke ?? null,
+          inclinePct: p.inclinePct ?? null,
+          speedKmh: p.speedKmh ?? null,
+        });
+      }
+    }
+
     await repo.updateRoutineSnapshot(routineId, JSON.stringify(snap));
   },
 
   overwriteRoutineWithActiveSets: async (routineId) => {
-    const { activeSets } = get();
-    const exerciseIds = Array.from(new Set(activeSets.map((s) => s.exercise.id)));
+    // 用 routineQueue（使用者本次規劃的動作清單，包含這次未做完的）作為新課表結構
+    // 這樣這次未做的動作下次開啟課表還是在
+    const { routineQueue, activeSets, plannedSetsByExercise } = get();
+    const exerciseIds = routineQueue.map((e) => e.id);
     const existing = await repo.listRoutineExercises(routineId);
     for (const r of existing) {
       await repo.removeExerciseFromRoutine(r.id);
     }
     for (let i = 0; i < exerciseIds.length; i++) {
-      const setCount = activeSets.filter((s) => s.exercise.id === exerciseIds[i]).length;
+      const exId = exerciseIds[i];
+      const doneCount = activeSets.filter((s) => s.exercise.id === exId).length;
+      const plannedCount = plannedSetsByExercise[exId]?.length ?? 0;
+      // targetSets = 這次完成的 + 還沒做的 planned，至少 1
+      const setCount = Math.max(1, doneCount + plannedCount);
       await repo.addExerciseToRoutine({
         routineId,
-        exerciseId: exerciseIds[i],
+        exerciseId: exId,
         orderIdx: i,
-        targetSets: Math.max(1, setCount),
+        targetSets: setCount,
       });
     }
     await get().saveRoutineSnapshot(routineId);

@@ -46,6 +46,7 @@ export default function ActiveWorkout() {
   const [showHistory, setShowHistory] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [workoutNote, setWorkoutNote] = useState('');
+  const [showNote, setShowNote] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -167,12 +168,16 @@ export default function ActiveWorkout() {
 
     const originalRex = await repo.listRoutineExercises(currentRoutineId);
     const originalIds = new Set(originalRex.map((r) => r.exerciseId));
-    const currentIds = new Set(activeSets.map((s) => s.exercise.id));
+    // 比較依據 = routineQueue（使用者本次規劃／實際保留的動作清單）
+    // 包含這次沒做但仍規劃的，下次打開課表還是在
+    const { routineQueue } = useAppStore.getState();
+    const currentIds = new Set(routineQueue.map((e) => e.id));
     const added = [...currentIds].filter((id) => !originalIds.has(id));
     const removed = [...originalIds].filter((id) => !currentIds.has(id));
     const changed = added.length > 0 || removed.length > 0;
 
     if (!changed) {
+      // 動作清單沒新增/刪除 → 只更新 snapshot（記住重量/次數）不另存模板
       await finalizeFinish({ saveSnapshotTo: currentRoutineId });
       return;
     }
@@ -271,22 +276,6 @@ export default function ActiveWorkout() {
           </View>
         </View>
 
-        <View className="mb-4">
-          <RestTimer autoStartKey={restTriggerKey} />
-        </View>
-
-        {/* 訓練備註 */}
-        <TextInput
-          value={workoutNote}
-          onChangeText={setWorkoutNote}
-          placeholder="今天感覺怎樣？有什麼想記下的..."
-          placeholderTextColor={palette.placeholder}
-          multiline
-          maxLength={200}
-          className="bg-kibo-surface text-kibo-text rounded-xl px-4 py-3 mb-4 border border-kibo-card"
-          style={{ minHeight: 50 }}
-        />
-
         <View className="bg-kibo-surface rounded-2xl p-3 border border-kibo-primary mb-3">
           <View className="flex-row items-center justify-between mb-2">
             <Text className="text-kibo-primary text-xs font-semibold">
@@ -352,6 +341,10 @@ export default function ActiveWorkout() {
               })}
             </View>
           )}
+        </View>
+
+        <View className="mb-3">
+          <RestTimer autoStartKey={restTriggerKey} />
         </View>
 
         {!selectedExercise && routineQueue.length === 0 && (
@@ -420,6 +413,30 @@ export default function ActiveWorkout() {
               onOpenOptions={onOpenOptions}
             />
           </>
+        )}
+
+        {/* 訓練心情備註（預設收合） */}
+        <Pressable
+          onPressIn={() => haptic.tapLight()}
+          onPress={() => setShowNote((v) => !v)}
+          className="flex-row items-center justify-between px-2 py-2 mt-4"
+        >
+          <Text className="text-kibo-mute text-xs font-semibold">
+            📝 今天感覺 {workoutNote.length > 0 && <Text className="text-kibo-primary">已填</Text>}
+          </Text>
+          <Text className="text-kibo-mute text-xs">{showNote ? '收合 ▴' : '展開 ▾'}</Text>
+        </Pressable>
+        {showNote && (
+          <TextInput
+            value={workoutNote}
+            onChangeText={setWorkoutNote}
+            placeholder="今天感覺怎樣？有什麼想記下的..."
+            placeholderTextColor={palette.placeholder}
+            multiline
+            maxLength={200}
+            className="bg-kibo-surface text-kibo-text rounded-xl px-4 py-3 mb-2 border border-kibo-card"
+            style={{ minHeight: 60 }}
+          />
         )}
       </ScrollView>
 

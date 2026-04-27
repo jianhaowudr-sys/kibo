@@ -296,6 +296,16 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('users', 'onboarding_completed_at'))) {
     await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN onboarding_completed_at INTEGER');
   }
+  // v9: 游泳姿勢 + 跑步機坡度 / 速率
+  if (!(await hasColumn('workout_sets', 'swim_stroke'))) {
+    await sqliteDb.runAsync('ALTER TABLE workout_sets ADD COLUMN swim_stroke TEXT');
+  }
+  if (!(await hasColumn('workout_sets', 'incline_pct'))) {
+    await sqliteDb.runAsync('ALTER TABLE workout_sets ADD COLUMN incline_pct REAL');
+  }
+  if (!(await hasColumn('workout_sets', 'speed_kmh'))) {
+    await sqliteDb.runAsync('ALTER TABLE workout_sets ADD COLUMN speed_kmh REAL');
+  }
 }
 
 async function seedV2IfNeeded(): Promise<void> {

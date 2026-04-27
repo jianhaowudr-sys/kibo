@@ -139,6 +139,9 @@ const rowToSet = (r: Row): WorkoutSet => ({
   reps: r.reps,
   durationSec: r.duration_sec,
   distanceM: r.distance_m,
+  swimStroke: r.swim_stroke ?? null,
+  inclinePct: r.incline_pct ?? null,
+  speedKmh: r.speed_kmh ?? null,
   completed: !!r.completed,
   exp: r.exp,
   createdAt: new Date(r.created_at),
@@ -270,11 +273,14 @@ export async function addSet(data: {
   reps?: number | null;
   durationSec?: number | null;
   distanceM?: number | null;
+  swimStroke?: string | null;
+  inclinePct?: number | null;
+  speedKmh?: number | null;
   exp: number;
 }): Promise<number> {
   const result = await sqliteDb.runAsync(
-    `INSERT INTO workout_sets (workout_id, exercise_id, order_idx, weight, reps, duration_sec, distance_m, completed, exp, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    `INSERT INTO workout_sets (workout_id, exercise_id, order_idx, weight, reps, duration_sec, distance_m, swim_stroke, incline_pct, speed_kmh, completed, exp, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
     [
       data.workoutId,
       data.exerciseId,
@@ -283,6 +289,9 @@ export async function addSet(data: {
       data.reps ?? null,
       data.durationSec ?? null,
       data.distanceM ?? null,
+      data.swimStroke ?? null,
+      data.inclinePct ?? null,
+      data.speedKmh ?? null,
       data.exp,
       Date.now(),
     ],

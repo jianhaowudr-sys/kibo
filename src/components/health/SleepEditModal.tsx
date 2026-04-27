@@ -8,15 +8,15 @@ import * as haptic from '@/lib/haptic';
 type Props = {
   visible: boolean;
   onClose: () => void;
-  /** 強制顯示（起床 prompt 模式），即使昨晚已有紀錄 */
+  /** 強制顯示（起床 prompt 模式）：上床預設昨天 / 起床預設今天 */
   promptMode?: boolean;
 };
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const MINS = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,10,...,55
+const MINS = Array.from({ length: 12 }, (_, i) => i * 5);
 
-// 起床日期可選回推 14 天（補昨天前忘記記）
-const DAY_OFFSETS = Array.from({ length: 15 }, (_, i) => i); // 0=今天, 1=昨天, ...
+// 上床 / 起床日期可選回推 14 天（補登記）
+const DAY_OFFSETS = Array.from({ length: 15 }, (_, i) => i);
 
 function nearestFiveMin(d: Date): number {
   return Math.round(d.getMinutes() / 5) * 5 % 60;
@@ -38,7 +38,8 @@ function dayOffsetLabel(offset: number): string {
 
 /**
  * 睡眠編輯 + 起床 prompt 雙用 modal。
- * 上下床時間用 hour + minute 兩個 WheelPicker，起床日期可回推 14 天。
+ * 上床日期 + 起床日期可獨立選擇（皆回推 14 天，方便補登記）。
+ * 時間用 hour + minute 兩個 WheelPicker。
  */
 export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const palette = useThemePalette();
@@ -46,28 +47,30 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const settings = useAppStore((s) => s.healthSettings);
   const upsertSleep = useAppStore((s) => s.upsertSleep);
 
-  // 預設：歷史最近一筆 OR 設定的 target
+  // 預設值來源：promptMode → 昨晚 / 今早；非 prompt → 既有紀錄 OR 設定 target
   const defaults = useMemo(() => {
-    if (sleepLast) {
-      const wake = new Date(sleepLast.wakeAt instanceof Date ? sleepLast.wakeAt : sleepLast.wakeAt);
-      const bed = new Date(sleepLast.bedtimeAt instanceof Date ? sleepLast.bedtimeAt : sleepLast.bedtimeAt);
-      return { bedtime: bed, wake };
-    }
-    const now = new Date();
     const [bH, bM] = settings.sleep.targetBedtime.split(':').map(Number);
     const [wH, wM] = settings.sleep.targetWakeTime.split(':').map(Number);
-    const wake = new Date(now);
-    wake.setHours(wH, wM, 0, 0);
-    const bed = new Date(wake);
-    bed.setDate(bed.getDate() - 1);
-    bed.setHours(bH, bM, 0, 0);
+
+    if (promptMode || !sleepLast) {
+      const wake = new Date();
+      wake.setHours(wH, wM, 0, 0);
+      const bed = new Date();
+      bed.setDate(bed.getDate() - 1);
+      bed.setHours(bH, bM, 0, 0);
+      return { bedtime: bed, wake };
+    }
+
+    const wake = new Date(sleepLast.wakeAt instanceof Date ? sleepLast.wakeAt : sleepLast.wakeAt);
+    const bed = new Date(sleepLast.bedtimeAt instanceof Date ? sleepLast.bedtimeAt : sleepLast.bedtimeAt);
     return { bedtime: bed, wake };
-  }, [sleepLast, settings.sleep.targetBedtime, settings.sleep.targetWakeTime]);
+  }, [promptMode, sleepLast, settings.sleep.targetBedtime, settings.sleep.targetWakeTime]);
 
   const [bedH, setBedH] = useState(defaults.bedtime.getHours());
   const [bedM, setBedM] = useState(nearestFiveMin(defaults.bedtime));
   const [wakeH, setWakeH] = useState(defaults.wake.getHours());
   const [wakeM, setWakeM] = useState(nearestFiveMin(defaults.wake));
+  const [bedDayOffset, setBedDayOffset] = useState(dayOffsetFromToday(defaults.bedtime));
   const [wakeDayOffset, setWakeDayOffset] = useState(dayOffsetFromToday(defaults.wake));
   const [quality, setQuality] = useState(3);
 
@@ -77,22 +80,20 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
       setBedM(nearestFiveMin(defaults.bedtime));
       setWakeH(defaults.wake.getHours());
       setWakeM(nearestFiveMin(defaults.wake));
+      setBedDayOffset(dayOffsetFromToday(defaults.bedtime));
       setWakeDayOffset(dayOffsetFromToday(defaults.wake));
-      setQuality(sleepLast?.quality ?? 3);
+      setQuality(promptMode ? 3 : (sleepLast?.quality ?? 3));
     }
-  }, [visible, defaults, sleepLast]);
+  }, [visible, defaults, sleepLast, promptMode]);
 
-  // 計算實際 Date：wake 為「(今天 - offset) 的 wakeH:wakeM」
-  // bed 預設為 wake 同天的 bedH:bedM；若 bed 比 wake 晚（跨夜情境，例如 bed 23:00 / wake 07:00）→ 退到前一天
+  // bed / wake 各自獨立由 dayOffset + 時分構成
   const computeDates = () => {
     const wake = new Date();
     wake.setDate(wake.getDate() - wakeDayOffset);
     wake.setHours(wakeH, wakeM, 0, 0);
-    const bed = new Date(wake);
+    const bed = new Date();
+    bed.setDate(bed.getDate() - bedDayOffset);
     bed.setHours(bedH, bedM, 0, 0);
-    if (bed.getTime() >= wake.getTime()) {
-      bed.setDate(bed.getDate() - 1);
-    }
     return { bed, wake };
   };
 
@@ -100,8 +101,13 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const dur = Math.max(0, Math.round((wakeDate.getTime() - bedDate.getTime()) / 60000));
   const dh = Math.floor(dur / 60);
   const dm = dur % 60;
+  const invalid = bedDate.getTime() >= wakeDate.getTime();
 
   const onSave = async () => {
+    if (invalid) {
+      haptic.error();
+      return;
+    }
     haptic.success();
     await upsertSleep({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality });
     onClose();
@@ -134,6 +140,33 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
     </View>
   );
 
+  const DayPills = ({ value, onChange }: { value: number; onChange: (n: number) => void }) => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginBottom: 8 }}
+      contentContainerStyle={{ gap: 6, paddingRight: 8 }}
+    >
+      {DAY_OFFSETS.map((offset) => {
+        const active = value === offset;
+        return (
+          <Pressable
+            key={offset}
+            onPress={() => { haptic.tapLight(); onChange(offset); }}
+            style={{
+              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14,
+              backgroundColor: active ? palette.primary : palette.card,
+            }}
+          >
+            <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 11 }}>
+              {dayOffsetLabel(offset)}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
@@ -146,33 +179,19 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
           </View>
 
           <ScrollView>
-            {/* 起床日期選擇（pill list 橫滑）*/}
-            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>起床日期</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, paddingRight: 8 }}>
-              {DAY_OFFSETS.map((offset) => {
-                const active = wakeDayOffset === offset;
-                return (
-                  <Pressable
-                    key={offset}
-                    onPress={() => { haptic.tapLight(); setWakeDayOffset(offset); }}
-                    style={{
-                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16,
-                      backgroundColor: active ? palette.primary : palette.card,
-                    }}
-                  >
-                    <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>
-                      {dayOffsetLabel(offset)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>上床日期</Text>
+            <DayPills value={bedDayOffset} onChange={setBedDayOffset} />
+            <HMRow label={`上床時間（${dayOffsetLabel(bedDayOffset)}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
 
-            <HMRow label={`上床時間（${dayOffsetLabel(dayOffsetFromToday(bedDate))}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>起床日期</Text>
+            <DayPills value={wakeDayOffset} onChange={setWakeDayOffset} />
             <HMRow label={`起床時間（${dayOffsetLabel(wakeDayOffset)}）`} h={wakeH} m={wakeM} setH={setWakeH} setM={setWakeM} />
 
             <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>時長</Text>
-            <Text style={{ color: palette.primary, fontSize: 24, fontWeight: '700', marginBottom: 16 }}>{dh}h {dm}m</Text>
+            <Text style={{ color: invalid ? palette.danger : palette.primary, fontSize: 24, fontWeight: '700', marginBottom: 4 }}>
+              {invalid ? '⚠️ 起床時間需晚於上床' : `${dh}h ${dm}m`}
+            </Text>
+            <View style={{ height: 12 }} />
 
             <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>感覺</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -198,9 +217,14 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
 
           <Pressable
             onPress={onSave}
-            style={{ backgroundColor: palette.primary, paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 8 }}
+            disabled={invalid}
+            style={{
+              backgroundColor: invalid ? palette.card : palette.primary,
+              paddingVertical: 14, borderRadius: 14, alignItems: 'center', marginTop: 8,
+              opacity: invalid ? 0.6 : 1,
+            }}
           >
-            <Text style={{ color: palette.bg, fontWeight: '700', fontSize: 16 }}>記錄</Text>
+            <Text style={{ color: invalid ? palette.mute : palette.bg, fontWeight: '700', fontSize: 16 }}>記錄</Text>
           </Pressable>
         </View>
       </View>
