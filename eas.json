@@ -38,6 +38,16 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "TODO_APPLE_ID@example.com",
+        "ascAppId": "TODO_ASC_APP_ID",
+        "appleTeamId": "TODO_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
+      }
+    }
   }
 }

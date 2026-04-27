@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kibo 隱私政策</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft JhengHei", sans-serif; max-width: 720px; margin: 40px auto; padding: 0 20px; line-height: 1.7; color: #222; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 18px; margin-top: 28px; }
+  h3 { font-size: 16px; margin-top: 20px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+  th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+  th { background: #f5f5f5; }
+  ul { padding-left: 24px; }
+  code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .meta { color: #888; font-size: 13px; }
+  .back { margin-top: 40px; }
+</style>
+</head>
+<body>
+  <h1>Kibo 隱私政策</h1>
+  <p class="meta">最後更新日期：2026 年 4 月 27 日</p>
+
+  <p>Kibo（以下稱「本 App」、「我們」）是一款健身、飲食與健康紀錄應用程式。本政策說明我們如何蒐集、使用、儲存、分享你的資料，以及你享有的權利。</p>
+  <p>使用本 App 即表示你同意本政策。如不同意，請停止使用並刪除 App。</p>
+
+  <h2>1. 我們蒐集哪些資料</h2>
+  <h3>1.1 你主動提供的資料</h3>
+  <ul>
+    <li><strong>帳號資訊</strong>：登入時透過 Apple Sign-In 或 Google Sign-In 取得的電子郵件、顯示名稱</li>
+    <li><strong>個人健康基本資料</strong>：身高、體重、目標（減脂／增肌／維持／力量）、每日卡路里／蛋白質目標、運動目標</li>
+    <li><strong>訓練紀錄</strong>：動作、組數、次數、重量、時間、距離、自訂的訓練筆記</li>
+    <li><strong>飲食紀錄</strong>：拍攝的食物 / 營養標籤照片、AI 估算的熱量與營養素、自訂食物名稱、份量、備註</li>
+    <li><strong>健康紀錄</strong>：飲水量、排便資料（含 Bristol 型、是否出血、是否疼痛）、睡眠時間與感受、生理週期資料（流量、症狀、PMS）</li>
+    <li><strong>體組成</strong>：InBody 等體組成報告照片、體重、體脂率、骨骼肌量等數值</li>
+    <li><strong>個人化設定</strong>：手掌尺寸（用於 AI 飲食份量校正）、首頁卡片排序、主題、低耗電模式</li>
+  </ul>
+  <h3>1.2 自動蒐集的資料</h3>
+  <ul>
+    <li><strong>裝置基本資訊</strong>：作業系統版本、App 版本（用於排錯）</li>
+    <li><strong>錯誤紀錄</strong>：當 App 發生例外時，會記錄錯誤堆疊（不含你的個人健康內容）</li>
+  </ul>
+  <p>我們<strong>不</strong>蒐集：精確 GPS 定位、聯絡人、簡訊、通話紀錄、相機 / 麥克風的持續性權限、跨 App 追蹤識別碼（IDFA）。</p>
+
+  <h2>2. 我們如何使用資料</h2>
+  <table>
+    <tr><th>用途</th><th>涉及資料</th></tr>
+    <tr><td>提供 App 的核心紀錄與統計功能</td><td>全部使用者輸入資料</td></tr>
+    <tr><td>AI 拍照辨識飲食 / 營養標 / 體組成數據</td><td>你拍攝的照片 + 你的手掌尺寸</td></tr>
+    <tr><td>雲端備份與多裝置同步</td><td>全部使用者輸入資料</td></tr>
+    <tr><td>計算成長動圈、連續日、寵物孵化進度</td><td>訓練 / 飲食 / 健康紀錄</td></tr>
+    <tr><td>排錯與修 bug</td><td>錯誤堆疊、App 版本、作業系統版本</td></tr>
+  </table>
+  <p>我們<strong>不會</strong>：</p>
+  <ul>
+    <li>將你的資料用於行銷或廣告投放</li>
+    <li>販售、出租你的資料給第三方</li>
+    <li>在 App 內顯示第三方廣告</li>
+  </ul>
+
+  <h2>3. 我們如何分享資料</h2>
+  <h3>3.1 AI 服務商（Vision / OCR 模型）</h3>
+  <p>你使用「拍照記飲食」、「拍營養標」、「拍 InBody」等功能時，<strong>該張照片</strong>會被傳送到我們的 AI 模型供應商（目前包括 OpenAI、Anthropic、Google 其中之一），用於辨識食物、營養素、數值。</p>
+  <ul>
+    <li>照片只用於該次辨識請求</li>
+    <li>我們已選擇供應商「不訓練模型」的方案（API zero-retention 或對應隱私條款）</li>
+    <li>辨識完成後，照片不會永久保留在 AI 供應商端</li>
+  </ul>
+  <p>如果你不希望任何照片離開裝置，<strong>請不要使用 AI 拍照功能</strong>——其餘所有手動輸入紀錄完全不需要 AI。</p>
+
+  <h3>3.2 雲端資料庫（Supabase）</h3>
+  <p>登入並啟用雲端同步後，你的紀錄資料（不含原始照片）會儲存於 Supabase 雲端資料庫，以便多裝置同步、換機不丟資料。Supabase 採用業界標準 TLS 傳輸加密、Row-Level Security 隔離不同使用者帳戶。</p>
+  <p>照片本身儲存於你裝置的私有 App 沙盒，<strong>不會</strong>上傳到 Supabase。</p>
+
+  <h3>3.3 法律要求</h3>
+  <ul>
+    <li>符合法律強制要求（例如有效的法院命令）</li>
+    <li>偵測或防止重大安全事件、詐欺</li>
+    <li>取得你的明確同意</li>
+  </ul>
+
+  <h2>4. 資料儲存與保留</h2>
+  <ul>
+    <li><strong>本機</strong>：所有紀錄與照片儲存於裝置 App 沙盒中，App 刪除即清除</li>
+    <li><strong>雲端</strong>：登入後同步的紀錄資料保留至你刪除帳號或主動刪除為止</li>
+    <li><strong>AI 推論請求</strong>：請求結束即刪除，AI 供應商不留存</li>
+  </ul>
+
+  <h2>5. 你的權利</h2>
+  <p>你可以隨時：</p>
+  <ul>
+    <li>在「我」頁面查看、編輯、刪除任何單筆紀錄</li>
+    <li>登出帳號</li>
+    <li>請求<strong>完全刪除</strong>雲端帳號與全部資料：在 App 內「我 → ⚙️ 設定 → ⚠️ 刪除帳號」一鍵執行；或寄信至下方聯絡 Email，我們將於 7 個工作日內處理</li>
+    <li>匯出個人資料（CSV / JSON）：在 App 內「資料備份 → 匯出全部資料」</li>
+  </ul>
+  <p>依據台灣《個人資料保護法》及歐盟 GDPR，你享有查詢、更正、刪除、停止處理、資料可攜權。</p>
+
+  <h2>6. 健康與醫療免責</h2>
+  <p>Kibo 提供的數值（包括 AI 估算的熱量、營養素、體組成趨勢、生理週期預測）為<strong>參考用途</strong>，<strong>不構成醫療建議</strong>。如有健康疑慮，請諮詢合格醫療專業人員。</p>
+
+  <h2>7. 兒童使用</h2>
+  <p>本 App 不主動針對 13 歲以下兒童設計。如你發現未成年人在未獲監護人同意下使用本 App 並提供個人資料，請聯絡我們以刪除相關資料。</p>
+
+  <h2>8. 資料安全</h2>
+  <ul>
+    <li>雲端資料採 TLS 傳輸加密</li>
+    <li>Row-Level Security 隔離不同使用者帳戶</li>
+    <li>帳號授權採用 Apple Sign-In / Google Sign-In OAuth 標準</li>
+    <li>不在 App 端儲存明文密碼</li>
+  </ul>
+  <p>但網路傳輸與儲存無法 100% 絕對安全，請理解此風險。</p>
+
+  <h2>9. 政策變更</h2>
+  <p>本政策若有重大變更，我們會在 App 內提示並更新「最後更新日期」。繼續使用 App 即視為同意更新後的政策。</p>
+
+  <h2>10. 聯絡方式</h2>
+  <p>如對本政策有任何疑問或想行使你的個資權利，請聯絡：</p>
+  <ul>
+    <li><strong>Email</strong>：<code>m013020082@gmail.com</code></li>
+    <li><strong>App 支援頁</strong>：<a href="./support.html">support.html</a></li>
+    <li><strong>GitHub Issues</strong>：<a href="https://github.com/jianhaowudr-sys/kibo/issues">jianhaowudr-sys/kibo/issues</a></li>
+  </ul>
+
+  <p class="meta" style="margin-top: 32px;">— 開發者：Kibo Team</p>
+
+  <p class="back"><a href="./index.html">← 回首頁</a></p>
+</body>
+</html>
