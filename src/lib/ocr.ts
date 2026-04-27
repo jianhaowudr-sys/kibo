@@ -319,6 +319,60 @@ export function mergeMealReadings(readings: MealReading[], mode: MergeMode = 'sa
   };
 }
 
+// ===== 營養標籤識別（plan v7）=====
+
+const NUTRITION_LABEL_PROMPT = `你是營養標籤判讀助手。使用者上傳的是包裝食品的「營養標示」表格照片（小方框內含每份/每100g 的數據）。
+
+判讀流程：
+1. 先確認照片是否為營養標籤。如果不是，回傳 {"error":"不是營養標籤"}。
+2. 找標示的「**每份**」量或「每包」量（不要用每 100g，除非沒寫每份）。
+3. 讀取該欄的：熱量 (kcal)、蛋白質 (g)、碳水化合物 (g)、脂肪 (g)。糖、鈉、飽和脂肪可忽略。
+4. 找產品名稱（包裝上的中文/英文名）。
+5. 找一份的描述（如「30g」「1 包」「200ml」等）。
+
+請嚴格只回 JSON：
+{
+  "title": "產品名稱",
+  "items": [{
+    "name": "產品名稱",
+    "portion": "每份 30g",
+    "calories": 數字,
+    "protein": 數字,
+    "carb": 數字,
+    "fat": 數字
+  }],
+  "totalCalories": 數字,
+  "totalProtein": 數字,
+  "totalCarb": 數字,
+  "totalFat": 數字
+}
+
+注意：營養標籤通常很小且字體模糊，請仔細看清楚每個數字。如果某欄位看不清楚，留 0 不要猜。`;
+
+export async function readNutritionLabelFromBase64(base64: string): Promise<MealReading> {
+  const raw = await callVisionJSON({
+    systemPrompt: NUTRITION_LABEL_PROMPT,
+    userPrompt: '請判讀這張營養標籤照片，回傳每份的營養素 JSON。',
+    base64,
+    temperature: 0,  // 標籤是確定數字，不要 hallucinate
+    maxTokens: 800,
+  });
+  const cleaned = raw.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '');
+  let parsed: any;
+  try { parsed = JSON.parse(cleaned); } catch {
+    throw new Error('AI 回傳格式錯誤，無法解析');
+  }
+  if (parsed.error) throw new Error(parsed.error);
+  return {
+    title: parsed.title,
+    items: parsed.items ?? [],
+    totalCalories: parsed.totalCalories ?? 0,
+    totalProtein: parsed.totalProtein ?? 0,
+    totalCarb: parsed.totalCarb ?? 0,
+    totalFat: parsed.totalFat ?? 0,
+  };
+}
+
 export async function readMealFromBase64(base64: string, options: MealParseOptions = {}): Promise<MealReading> {
   const memoryHint = await getMemoryHint(10);
 

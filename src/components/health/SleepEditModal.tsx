@@ -15,13 +15,30 @@ type Props = {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINS = Array.from({ length: 12 }, (_, i) => i * 5); // 0,5,10,...,55
 
+// 起床日期可選回推 14 天（補昨天前忘記記）
+const DAY_OFFSETS = Array.from({ length: 15 }, (_, i) => i); // 0=今天, 1=昨天, ...
+
 function nearestFiveMin(d: Date): number {
   return Math.round(d.getMinutes() / 5) * 5 % 60;
 }
 
+function dayOffsetFromToday(d: Date): number {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const target = new Date(d); target.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.round((now.getTime() - target.getTime()) / 86400_000));
+}
+
+function dayOffsetLabel(offset: number): string {
+  if (offset === 0) return '今天';
+  if (offset === 1) return '昨天';
+  if (offset === 2) return '前天';
+  const d = new Date(); d.setDate(d.getDate() - offset);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 /**
  * 睡眠編輯 + 起床 prompt 雙用 modal。
- * 上下床時間用 hour + minute 兩個 WheelPicker。
+ * 上下床時間用 hour + minute 兩個 WheelPicker，起床日期可回推 14 天。
  */
 export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const palette = useThemePalette();
@@ -32,10 +49,9 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   // 預設：歷史最近一筆 OR 設定的 target
   const defaults = useMemo(() => {
     if (sleepLast) {
-      return {
-        bedtime: new Date(sleepLast.bedtimeAt instanceof Date ? sleepLast.bedtimeAt : sleepLast.bedtimeAt),
-        wake: new Date(sleepLast.wakeAt instanceof Date ? sleepLast.wakeAt : sleepLast.wakeAt),
-      };
+      const wake = new Date(sleepLast.wakeAt instanceof Date ? sleepLast.wakeAt : sleepLast.wakeAt);
+      const bed = new Date(sleepLast.bedtimeAt instanceof Date ? sleepLast.bedtimeAt : sleepLast.bedtimeAt);
+      return { bedtime: bed, wake };
     }
     const now = new Date();
     const [bH, bM] = settings.sleep.targetBedtime.split(':').map(Number);
@@ -52,6 +68,7 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const [bedM, setBedM] = useState(nearestFiveMin(defaults.bedtime));
   const [wakeH, setWakeH] = useState(defaults.wake.getHours());
   const [wakeM, setWakeM] = useState(nearestFiveMin(defaults.wake));
+  const [wakeDayOffset, setWakeDayOffset] = useState(dayOffsetFromToday(defaults.wake));
   const [quality, setQuality] = useState(3);
 
   useEffect(() => {
@@ -60,16 +77,20 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
       setBedM(nearestFiveMin(defaults.bedtime));
       setWakeH(defaults.wake.getHours());
       setWakeM(nearestFiveMin(defaults.wake));
+      setWakeDayOffset(dayOffsetFromToday(defaults.wake));
       setQuality(sleepLast?.quality ?? 3);
     }
   }, [visible, defaults, sleepLast]);
 
-  // 計算實際 Date：bedtime 設為「昨天的 bedH:bedM」，wake 是「今天的 wakeH:wakeM」
+  // 計算實際 Date：wake 為「(今天 - offset) 的 wakeH:wakeM」，bed 預設為 wake 前一天的 bedH:bedM
   const computeDates = () => {
-    const today = new Date(); today.setSeconds(0, 0);
-    const wake = new Date(today); wake.setHours(wakeH, wakeM, 0, 0);
-    const bed = new Date(wake); bed.setDate(bed.getDate() - 1); bed.setHours(bedH, bedM, 0, 0);
-    // 若 bedtime 比 wake 還晚（罕見：例如 bed 03:00, wake 05:00 同天）→ 把 bed 移回今天
+    const wake = new Date();
+    wake.setDate(wake.getDate() - wakeDayOffset);
+    wake.setHours(wakeH, wakeM, 0, 0);
+    const bed = new Date(wake);
+    bed.setDate(bed.getDate() - 1);
+    bed.setHours(bedH, bedM, 0, 0);
+    // 若 bed 比 wake 晚（罕見：bed 03:00 wake 05:00 同天）→ 把 bed 移回 wake 同天
     if (bed.getTime() >= wake.getTime()) {
       bed.setDate(bed.getDate() + 1);
     }
@@ -126,8 +147,30 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
           </View>
 
           <ScrollView>
-            <HMRow label="上床時間" h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
-            <HMRow label="起床時間" h={wakeH} m={wakeM} setH={setWakeH} setM={setWakeM} />
+            {/* 起床日期選擇（pill list 橫滑）*/}
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>起床日期</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} contentContainerStyle={{ gap: 6, paddingRight: 8 }}>
+              {DAY_OFFSETS.map((offset) => {
+                const active = wakeDayOffset === offset;
+                return (
+                  <Pressable
+                    key={offset}
+                    onPress={() => { haptic.tapLight(); setWakeDayOffset(offset); }}
+                    style={{
+                      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16,
+                      backgroundColor: active ? palette.primary : palette.card,
+                    }}
+                  >
+                    <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>
+                      {dayOffsetLabel(offset)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <HMRow label={`上床時間（${dayOffsetLabel(wakeDayOffset + 1)}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />
+            <HMRow label={`起床時間（${dayOffsetLabel(wakeDayOffset)}）`} h={wakeH} m={wakeM} setH={setWakeH} setM={setWakeM} />
 
             <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>時長</Text>
             <Text style={{ color: palette.primary, fontSize: 24, fontWeight: '700', marginBottom: 16 }}>{dh}h {dm}m</Text>

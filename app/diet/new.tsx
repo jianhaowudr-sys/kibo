@@ -5,7 +5,7 @@ import { useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
-import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, type MealReading, type MergeMode } from '@/lib/ocr';
+import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, readNutritionLabelFromBase64, type MealReading, type MergeMode } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
@@ -55,6 +55,7 @@ export default function NewMeal() {
   const [mergeMode, setMergeMode] = useState<MergeMode>('sameMeal');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [includePalmRef, setIncludePalmRef] = useState(false);
+  const [photoMode, setPhotoMode] = useState<'meal' | 'label'>('meal');
   const lowPower = useLowPower();
   const healthSettings = useAppStore((s) => s.healthSettings);
 
@@ -179,6 +180,15 @@ export default function NewMeal() {
       ? { lengthCm: healthSettings.body.palmLengthCm, widthCm: healthSettings.body.palmWidthCm }
       : undefined;
     try {
+      // 營養標模式：讀取包裝營養表
+      if (photoMode === 'label') {
+        const reading = await readNutritionLabelFromBase64(photos[0].base64);
+        setPerPhotoReadings([reading]);
+        apply(reading);
+        haptic.success();
+        return;
+      }
+
       if (photos.length === 1) {
         const reading = await readMealFromBase64(photos[0].base64, {
           capturedAt: photos[0].takenAt ?? Date.now(),
@@ -410,6 +420,27 @@ export default function NewMeal() {
 
         {photos.length > 0 && (
           <>
+          {/* 拍攝模式：食物 / 營養標 */}
+          <View className="flex-row gap-2 mb-3">
+            <Pressable
+              onPress={() => { haptic.tapLight(); setPhotoMode('meal'); }}
+              className={`flex-1 py-2 rounded-xl items-center ${photoMode === 'meal' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+            >
+              <Text className={`font-semibold text-sm ${photoMode === 'meal' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                📷 食物（AI 估算）
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { haptic.tapLight(); setPhotoMode('label'); }}
+              className={`flex-1 py-2 rounded-xl items-center ${photoMode === 'label' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+            >
+              <Text className={`font-semibold text-sm ${photoMode === 'label' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
+                📑 營養標（直接讀）
+              </Text>
+            </Pressable>
+          </View>
+
+          {photoMode === 'meal' && (
           <Pressable
             onPress={() => {
               haptic.tapLight();
@@ -440,6 +471,7 @@ export default function NewMeal() {
               </Text>
             </View>
           </Pressable>
+          )}
 
           <Pressable
             onPress={onAIParse}
@@ -450,12 +482,14 @@ export default function NewMeal() {
               <>
                 <ActivityIndicator color="#F1F5F9" />
                 <Text className="text-kibo-text font-bold">
-                  AI 估算中... {photos.length > 1 ? `(${photos.length} 張${lowPower ? ' 序列' : ' 並行'})` : ''}
+                  {photoMode === 'label' ? '讀取營養標中...' : `AI 估算中... ${photos.length > 1 ? `(${photos.length} 張${lowPower ? ' 序列' : ' 並行'})` : ''}`}
                 </Text>
               </>
             ) : (
               <Text className="text-kibo-bg font-bold text-base">
-                🤖 AI 自動估營養 {photos.length > 1 && (mergeMode === 'sameMeal' ? `(${photos.length} 張取平均)` : `(${photos.length} 張分開記)`)}
+                {photoMode === 'label'
+                  ? '📑 讀取營養標'
+                  : `🤖 AI 自動估營養 ${photos.length > 1 ? (mergeMode === 'sameMeal' ? `(${photos.length} 張取平均)` : `(${photos.length} 張分開記)`) : ''}`}
               </Text>
             )}
           </Pressable>
