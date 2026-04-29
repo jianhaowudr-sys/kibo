@@ -8,6 +8,7 @@ import { PetCard } from '@/components/PetCard';
 import { last7Days, displayDate, formatDuration } from '@/lib/date';
 import { startOfDay, startOfMonth, subDays } from 'date-fns';
 import * as repo from '@/db/repo';
+import * as healthRepo from '@/db/health_repo';
 import { levelFromExp } from '@/lib/exp';
 import { resetDatabase } from '@/db/migrate';
 import {
@@ -85,6 +86,9 @@ export default function MeScreen() {
   const [workoutStats, setWorkoutStats] = useState<{ count: number; totalExp: number; totalVolume: number; totalDurSec: number; uniqueDays: number } | null>(null);
   const [mealStats, setMealStats] = useState<{ count: number; uniqueDays: number; totalCalories: number; totalProtein: number; totalCarb: number; totalFat: number; avgCalPerDay: number; avgProteinPerDay: number } | null>(null);
   const [bodyDelta, setBodyDelta] = useState<Awaited<ReturnType<typeof repo.rangeBodyDelta>> | null>(null);
+  const [waterStats, setWaterStats] = useState<Awaited<ReturnType<typeof healthRepo.rangeWaterSummary>> | null>(null);
+  const [bowelStats, setBowelStats] = useState<Awaited<ReturnType<typeof healthRepo.rangeBowelSummary>> | null>(null);
+  const [sleepStats, setSleepStats] = useState<Awaited<ReturnType<typeof healthRepo.rangeSleepSummary>> | null>(null);
   const toggleStatsPanel = (k: string) => {
     haptic.tapLight();
     setStatsPanel((p) => (p === k ? null : k));
@@ -174,14 +178,20 @@ export default function MeScreen() {
     else start = subDays(startOfDay(now), 29).getTime();
 
     (async () => {
-      const [w, m, b] = await Promise.all([
+      const [w, m, b, wa, bo, sl] = await Promise.all([
         repo.rangeWorkoutSummary(user.id, start, end),
         repo.rangeMealSummary(user.id, start, end),
         repo.rangeBodyDelta(user.id, start, end),
+        healthRepo.rangeWaterSummary(user.id, start, end),
+        healthRepo.rangeBowelSummary(user.id, start, end),
+        healthRepo.rangeSleepSummary(user.id, start, end),
       ]);
       setWorkoutStats(w);
       setMealStats(m);
       setBodyDelta(b);
+      setWaterStats(wa);
+      setBowelStats(bo);
+      setSleepStats(sl);
     })();
   }, [section, statsRange, user]);
 
@@ -428,6 +438,115 @@ export default function MeScreen() {
                     </Text>
                   </View>
                 </>
+              )}
+            </Panel>
+            )}
+
+            {/* Panel: 喝水數據 */}
+            {isStatsItemVisible('water-panel') && (
+            <Panel
+              id="water"
+              open={statsPanel === 'water'}
+              onToggle={toggleStatsPanel}
+              icon="💧"
+              title="喝水數據"
+              summary={waterStats ? `${waterStats.count} 次 · ${waterStats.uniqueDays} 天 · 日均 ${(waterStats.avgMlPerDay / 1000).toFixed(2)}L` : '載入中'}
+            >
+              {waterStats && (
+                waterStats.count === 0 ? (
+                  <Text className="text-kibo-mute text-xs text-center py-4">
+                    此區間沒有喝水紀錄
+                  </Text>
+                ) : (
+                  <>
+                    <View className="flex-row gap-2 mb-2">
+                      <StatCard label="記錄次數" value={waterStats.count} suffix="次" icon="🥤" />
+                      <StatCard label="記錄天數" value={waterStats.uniqueDays} suffix="天" icon="📅" />
+                    </View>
+                    <View className="flex-row gap-2">
+                      <StatCard label="總攝取" value={(waterStats.totalMl / 1000).toFixed(2)} suffix="L" icon="💧" color="text-kibo-primary" />
+                      <StatCard label="日均攝取" value={(waterStats.avgMlPerDay / 1000).toFixed(2)} suffix="L" icon="📊" color="text-kibo-success" />
+                    </View>
+                  </>
+                )
+              )}
+            </Panel>
+            )}
+
+            {/* Panel: 排便數據 */}
+            {isStatsItemVisible('bowel-panel') && (
+            <Panel
+              id="bowel"
+              open={statsPanel === 'bowel'}
+              onToggle={toggleStatsPanel}
+              icon="💩"
+              title="排便數據"
+              summary={bowelStats ? `${bowelStats.count} 次 · ${bowelStats.uniqueDays} 天${bowelStats.avgBristol ? ` · 平均 T${bowelStats.avgBristol}` : ''}` : '載入中'}
+            >
+              {bowelStats && (
+                bowelStats.count === 0 ? (
+                  <Text className="text-kibo-mute text-xs text-center py-4">
+                    此區間沒有排便紀錄
+                  </Text>
+                ) : (
+                  <>
+                    <View className="flex-row gap-2 mb-2">
+                      <StatCard label="次數" value={bowelStats.count} suffix="次" icon="💩" />
+                      <StatCard label="天數" value={bowelStats.uniqueDays} suffix="天" icon="📅" />
+                    </View>
+                    <View className="flex-row gap-2 mb-2">
+                      <StatCard label="平均 Bristol" value={bowelStats.avgBristol ?? '-'} icon="📏" color="text-kibo-success" />
+                      <StatCard label="日均次數" value={(bowelStats.count / Math.max(1, bowelStats.uniqueDays)).toFixed(1)} suffix="次" icon="📊" />
+                    </View>
+                    {(bowelStats.bloodCount > 0 || bowelStats.painCount > 0) && (
+                      <View className="bg-kibo-card rounded-xl p-3">
+                        <Text className="text-kibo-mute text-[10px] mb-1">異常標記</Text>
+                        <Text className="text-kibo-text text-xs">
+                          {bowelStats.bloodCount > 0 && `🩸 出血 ${bowelStats.bloodCount} 次`}
+                          {bowelStats.bloodCount > 0 && bowelStats.painCount > 0 && '  ·  '}
+                          {bowelStats.painCount > 0 && `😣 腹痛 ${bowelStats.painCount} 次`}
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                )
+              )}
+            </Panel>
+            )}
+
+            {/* Panel: 睡眠數據 */}
+            {isStatsItemVisible('sleep-panel') && (
+            <Panel
+              id="sleep"
+              open={statsPanel === 'sleep'}
+              onToggle={toggleStatsPanel}
+              icon="😴"
+              title="睡眠數據"
+              summary={sleepStats ? (sleepStats.count === 0 ? '無紀錄' : `${sleepStats.count} 晚 · 平均 ${Math.floor((sleepStats.avgMin ?? 0) / 60)}h ${(sleepStats.avgMin ?? 0) % 60}m`) : '載入中'}
+            >
+              {sleepStats && (
+                sleepStats.count === 0 ? (
+                  <Text className="text-kibo-mute text-xs text-center py-4">
+                    此區間沒有睡眠紀錄
+                  </Text>
+                ) : (
+                  <>
+                    <View className="flex-row gap-2 mb-2">
+                      <StatCard label="晚數" value={sleepStats.count} suffix="晚" icon="🌙" />
+                      <StatCard label="平均時長" value={`${Math.floor((sleepStats.avgMin ?? 0) / 60)}h${(sleepStats.avgMin ?? 0) % 60}m`} icon="⏰" color="text-kibo-primary" />
+                    </View>
+                    <View className="flex-row gap-2 mb-2">
+                      <StatCard label="平均品質" value={sleepStats.avgQuality ?? '-'} suffix="/5" icon="⭐" color="text-kibo-success" />
+                      <StatCard label="累計時長" value={`${Math.floor(sleepStats.totalMin / 60)}h`} icon="🛌" />
+                    </View>
+                    <View className="bg-kibo-card rounded-xl p-3">
+                      <Text className="text-kibo-mute text-[10px] mb-1">區間範圍</Text>
+                      <Text className="text-kibo-text text-xs">
+                        最短 {Math.floor((sleepStats.shortest ?? 0) / 60)}h{(sleepStats.shortest ?? 0) % 60}m · 最長 {Math.floor((sleepStats.longest ?? 0) / 60)}h{(sleepStats.longest ?? 0) % 60}m
+                      </Text>
+                    </View>
+                  </>
+                )
               )}
             </Panel>
             )}
@@ -996,113 +1115,6 @@ export default function MeScreen() {
               <Text className="text-kibo-mute">▶</Text>
             </Pressable>
 
-            <SectionHeader label="帳號" />
-
-            {/* 💾 資料備份 */}
-            <Panel
-              id="backup"
-              open={openPanel === 'backup'}
-              onToggle={togglePanel}
-              icon="💾"
-              title="資料備份"
-              summary="匯出 / 匯入所有紀錄"
-            >
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={async () => {
-                  try {
-                    await exportAll();
-                    haptic.success();
-                  } catch (e: any) {
-                    haptic.error();
-                    Alert.alert('匯出失敗', e?.message ?? String(e));
-                  }
-                }}
-                className="bg-kibo-primary/20 border border-kibo-primary rounded-xl py-2.5 mb-2"
-              >
-                <Text className="text-kibo-primary text-center font-semibold">📤 匯出全部資料</Text>
-              </Pressable>
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={() => {
-                  Alert.alert(
-                    '匯入備份？',
-                    '會覆蓋目前所有資料。建議先匯出一份備份。',
-                    [
-                      { text: '取消', style: 'cancel' },
-                      {
-                        text: '選擇檔案匯入',
-                        style: 'destructive',
-                        onPress: async () => {
-                          try {
-                            const result = await importAll();
-                            if (result.imported) {
-                              await bootstrap();
-                              haptic.success();
-                              Alert.alert('✅ 匯入成功', `${result.tables} 張表、${result.rows} 筆紀錄已還原`);
-                            }
-                          } catch (e: any) {
-                            haptic.error();
-                            Alert.alert('匯入失敗', e?.message ?? String(e));
-                          }
-                        },
-                      },
-                    ],
-                  );
-                }}
-                className="bg-kibo-accent/20 border border-kibo-accent rounded-xl py-2.5 mb-2"
-              >
-                <Text className="text-kibo-accent text-center font-semibold">📥 從備份檔匯入（JSON）</Text>
-              </Pressable>
-
-              <Pressable
-                onPressIn={() => haptic.tapMedium()}
-                onPress={() => {
-                  Alert.alert(
-                    '從 Strong App CSV 匯入',
-                    '會「累加」到你現有資料，不會覆蓋。同日期已存在的訓練會自動跳過。\n\n支援格式：Strong / Hevy 等健身 app 匯出的標準 CSV。',
-                    [
-                      { text: '取消', style: 'cancel' },
-                      {
-                        text: '選擇 CSV 匯入',
-                        onPress: async () => {
-                          try {
-                            const result = await importStrongCSV();
-                            if (!result) return;
-                            await bootstrap();
-                            haptic.success();
-                            Alert.alert(
-                              '✅ CSV 匯入完成',
-                              `新增 ${result.workoutsCreated} 次訓練\n新增 ${result.setsCreated} 組紀錄\n新增 ${result.newExercises} 個自訂動作\n略過 ${result.skippedRows} 筆（同日期已存在）`,
-                            );
-                          } catch (e: any) {
-                            haptic.error();
-                            Alert.alert('匯入失敗', e?.message ?? String(e));
-                          }
-                        },
-                      },
-                    ],
-                  );
-                }}
-                className="bg-kibo-success/20 border border-kibo-success rounded-xl py-2.5"
-              >
-                <Text className="text-kibo-success text-center font-semibold">📊 從 Strong CSV 匯入（累加）</Text>
-              </Pressable>
-
-              <Text className="text-kibo-mute text-[10px] mt-2 leading-4">
-                匯出 = 完整備份（JSON）；Strong CSV = 累加匯入歷史紀錄不覆蓋。
-              </Text>
-            </Panel>
-
-            {/* ⚠️ 刪除帳號 */}
-            <Pressable
-              onPress={() => { haptic.tapLight(); router.push('/me/delete-account' as any); }}
-              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-danger/40 mb-3 flex-row items-center"
-            >
-              <Text className="text-kibo-danger font-semibold flex-1">⚠️ 刪除帳號</Text>
-              <Text className="text-kibo-mute">▶</Text>
-            </Pressable>
-
             <SectionHeader label="App" />
 
             {/* 🎨 外觀（合併：明暗模式 + 視覺風格 + 低負擔模式）*/}
@@ -1309,7 +1321,103 @@ export default function MeScreen() {
               </Pressable>
             </Panel>
 
-            <SectionHeader label="危險區" />
+            <SectionHeader label="帳號 / 危險區" />
+
+            {/* 💾 資料備份 */}
+            <Panel
+              id="backup"
+              open={openPanel === 'backup'}
+              onToggle={togglePanel}
+              icon="💾"
+              title="資料備份"
+              summary="匯出 / 匯入所有紀錄"
+            >
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={async () => {
+                  try {
+                    await exportAll();
+                    haptic.success();
+                  } catch (e: any) {
+                    haptic.error();
+                    Alert.alert('匯出失敗', e?.message ?? String(e));
+                  }
+                }}
+                className="bg-kibo-primary/20 border border-kibo-primary rounded-xl py-2.5 mb-2"
+              >
+                <Text className="text-kibo-primary text-center font-semibold">📤 匯出全部資料</Text>
+              </Pressable>
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={() => {
+                  Alert.alert(
+                    '匯入備份？',
+                    '會覆蓋目前所有資料。建議先匯出一份備份。',
+                    [
+                      { text: '取消', style: 'cancel' },
+                      {
+                        text: '選擇檔案匯入',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            const result = await importAll();
+                            if (result.imported) {
+                              await bootstrap();
+                              haptic.success();
+                              Alert.alert('✅ 匯入成功', `${result.tables} 張表、${result.rows} 筆紀錄已還原`);
+                            }
+                          } catch (e: any) {
+                            haptic.error();
+                            Alert.alert('匯入失敗', e?.message ?? String(e));
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+                className="bg-kibo-accent/20 border border-kibo-accent rounded-xl py-2.5 mb-2"
+              >
+                <Text className="text-kibo-accent text-center font-semibold">📥 從備份檔匯入（JSON）</Text>
+              </Pressable>
+
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={() => {
+                  Alert.alert(
+                    '從 Strong App CSV 匯入',
+                    '會「累加」到你現有資料，不會覆蓋。同日期已存在的訓練會自動跳過。\n\n支援格式：Strong / Hevy 等健身 app 匯出的標準 CSV。',
+                    [
+                      { text: '取消', style: 'cancel' },
+                      {
+                        text: '選擇 CSV 匯入',
+                        onPress: async () => {
+                          try {
+                            const result = await importStrongCSV();
+                            if (!result) return;
+                            await bootstrap();
+                            haptic.success();
+                            Alert.alert(
+                              '✅ CSV 匯入完成',
+                              `新增 ${result.workoutsCreated} 次訓練\n新增 ${result.setsCreated} 組紀錄\n新增 ${result.newExercises} 個自訂動作\n略過 ${result.skippedRows} 筆（同日期已存在）`,
+                            );
+                          } catch (e: any) {
+                            haptic.error();
+                            Alert.alert('匯入失敗', e?.message ?? String(e));
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+                className="bg-kibo-success/20 border border-kibo-success rounded-xl py-2.5"
+              >
+                <Text className="text-kibo-success text-center font-semibold">📊 從 Strong CSV 匯入（累加）</Text>
+              </Pressable>
+
+              <Text className="text-kibo-mute text-[10px] mt-2 leading-4">
+                匯出 = 完整備份（JSON）；Strong CSV = 累加匯入歷史紀錄不覆蓋。
+              </Text>
+            </Panel>
 
             {/* ⚠️ 進階 */}
             <Panel
@@ -1331,6 +1439,15 @@ export default function MeScreen() {
                 會刪除所有訓練紀錄、課表、寵物、蛋、InBody 與飲食紀錄。無法復原。
               </Text>
             </Panel>
+
+            {/* ⚠️ 刪除帳號 */}
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/me/delete-account' as any); }}
+              className="bg-kibo-surface rounded-2xl p-4 border border-kibo-danger/40 mb-3 flex-row items-center"
+            >
+              <Text className="text-kibo-danger font-semibold flex-1">⚠️ 刪除帳號</Text>
+              <Text className="text-kibo-mute">▶</Text>
+            </Pressable>
 
             <Text className="text-kibo-mute text-center text-xs mt-6">Kibo v1.2</Text>
           </>

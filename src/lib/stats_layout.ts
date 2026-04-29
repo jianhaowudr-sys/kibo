@@ -11,6 +11,9 @@ export type StatsItemId =
   | 'weekly-chart'
   | 'workout-panel'
   | 'meal-panel'
+  | 'water-panel'
+  | 'bowel-panel'
+  | 'sleep-panel'
   | 'body-panel'
   | 'overall-panel';
 
@@ -31,8 +34,11 @@ export const DEFAULT_STATS_LAYOUT: StatsLayout = {
     { id: 'weekly-chart', visible: true, order: 4 },
     { id: 'workout-panel', visible: true, order: 5 },
     { id: 'meal-panel', visible: true, order: 6 },
-    { id: 'body-panel', visible: true, order: 7 },
-    { id: 'overall-panel', visible: true, order: 8 },
+    { id: 'water-panel', visible: true, order: 7 },
+    { id: 'bowel-panel', visible: true, order: 8 },
+    { id: 'sleep-panel', visible: true, order: 9 },
+    { id: 'body-panel', visible: true, order: 10 },
+    { id: 'overall-panel', visible: true, order: 11 },
   ],
 };
 
@@ -44,6 +50,9 @@ export const STATS_LABELS: Record<StatsItemId, string> = {
   'weekly-chart': '📊 近 7 日圖',
   'workout-panel': '💪 訓練數據（折疊）',
   'meal-panel': '🍱 飲食數據（折疊）',
+  'water-panel': '💧 喝水數據（折疊）',
+  'bowel-panel': '💩 排便數據（折疊）',
+  'sleep-panel': '😴 睡眠數據（折疊）',
   'body-panel': '📸 體態變化（折疊）',
   'overall-panel': '🎯 綜合活動（折疊）',
 };

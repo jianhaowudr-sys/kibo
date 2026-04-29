@@ -84,6 +84,25 @@ export async function deleteWaterBatch(batchKey: string): Promise<number[]> {
   return rows.map((r) => r.id as number);
 }
 
+export async function rangeWaterSummary(userId: number, startMs: number, endMs: number): Promise<{
+  count: number; uniqueDays: number; totalMl: number; avgMlPerDay: number;
+}> {
+  const r = await sqliteDb.getFirstAsync<any>(
+    `SELECT COUNT(*) as c,
+       COUNT(DISTINCT date(logged_at / 1000, 'unixepoch', 'localtime')) as ud,
+       COALESCE(SUM(amount_ml), 0) as ml
+     FROM water_logs WHERE user_id = ? AND logged_at BETWEEN ? AND ?`,
+    [userId, startMs, endMs],
+  );
+  const days = Math.max(1, r?.ud ?? 0);
+  return {
+    count: r?.c ?? 0,
+    uniqueDays: r?.ud ?? 0,
+    totalMl: r?.ml ?? 0,
+    avgMlPerDay: Math.round((r?.ml ?? 0) / days),
+  };
+}
+
 // ===== Bowel =====
 
 export async function addBowel(data: {
@@ -129,6 +148,39 @@ export async function updateBowel(id: number, patch: Partial<NewBowelLog>): Prom
 export async function deleteBowel(id: number): Promise<void> {
   await enqueueRemoteDelete('bowel_logs', id);
   await sqliteDb.runAsync(`DELETE FROM bowel_logs WHERE id = ?`, [id]);
+}
+
+export async function rangeBowelSummary(userId: number, startMs: number, endMs: number): Promise<{
+  count: number; uniqueDays: number;
+  bristolDist: Record<number, number>;
+  bloodCount: number; painCount: number;
+  avgBristol: number | null;
+}> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT bristol, has_blood, has_pain, logged_at FROM bowel_logs
+     WHERE user_id = ? AND logged_at BETWEEN ? AND ?`,
+    [userId, startMs, endMs],
+  );
+  const days = new Set<string>();
+  const bristolDist: Record<number, number> = {};
+  let bloodCount = 0; let painCount = 0; let bristolSum = 0; let bristolN = 0;
+  for (const r of rows) {
+    const d = new Date(r.logged_at);
+    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    if (r.bristol) {
+      bristolDist[r.bristol] = (bristolDist[r.bristol] ?? 0) + 1;
+      bristolSum += r.bristol; bristolN++;
+    }
+    if (r.has_blood) bloodCount++;
+    if (r.has_pain) painCount++;
+  }
+  return {
+    count: rows.length,
+    uniqueDays: days.size,
+    bristolDist,
+    bloodCount, painCount,
+    avgBristol: bristolN > 0 ? Math.round((bristolSum / bristolN) * 10) / 10 : null,
+  };
 }
 
 // ===== Sleep =====
@@ -189,6 +241,32 @@ export async function listSleepRecent(userId: number, days: number): Promise<Sle
     [userId, cutoff],
   );
   return rows.map(ROW2SLEEP);
+}
+
+export async function rangeSleepSummary(userId: number, startMs: number, endMs: number): Promise<{
+  count: number; totalMin: number; avgMin: number | null;
+  avgQuality: number | null;
+  shortest: number | null; longest: number | null;
+}> {
+  const r = await sqliteDb.getFirstAsync<any>(
+    `SELECT COUNT(*) as c,
+       COALESCE(SUM(duration_min), 0) as total,
+       COALESCE(AVG(duration_min), 0) as avg,
+       COALESCE(AVG(quality), 0) as q,
+       MIN(duration_min) as mn,
+       MAX(duration_min) as mx
+     FROM sleep_logs WHERE user_id = ? AND wake_at BETWEEN ? AND ?`,
+    [userId, startMs, endMs],
+  );
+  const c = r?.c ?? 0;
+  return {
+    count: c,
+    totalMin: r?.total ?? 0,
+    avgMin: c > 0 ? Math.round(r?.avg ?? 0) : null,
+    avgQuality: c > 0 ? Math.round((r?.q ?? 0) * 10) / 10 : null,
+    shortest: c > 0 ? r?.mn ?? null : null,
+    longest: c > 0 ? r?.mx ?? null : null,
+  };
 }
 
 export async function deleteSleep(id: number): Promise<void> {

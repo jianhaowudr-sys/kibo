@@ -119,6 +119,20 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'me',
     icon: '📊',
   },
+  'stats-health-range': {
+    id: 'stats-health-range',
+    title: '健康數據看區間變化',
+    body: '「我 → 數據」切換時間範圍（今日/週/月），訓練、飲食、喝水、排便、睡眠、體態都會帶區間統計。',
+    scope: 'me',
+    icon: '📈',
+  },
+  'diet-history': {
+    id: 'diet-history',
+    title: '回看過去飲食',
+    body: '飲食頁上方 ‹ › 切換日期、點中間日期回今天；歷史日期可看當天明細與營養總計，但只能在今天新增。',
+    scope: 'diet',
+    icon: '📅',
+  },
   'bowel-detail': {
     id: 'bowel-detail',
     title: '排便詳填',
