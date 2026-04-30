@@ -7,6 +7,7 @@ import * as repo from '@/db/repo';
 import * as haptic from '@/lib/haptic';
 import { LONG_PRESS_MS } from '@/lib/gestures';
 import { TutorialTip } from '@/components/common/TutorialTip';
+import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import type { RoutineExercise, Exercise, Routine } from '@/db/schema';
 
 type RoutineDetail = {
@@ -237,7 +238,7 @@ export default function RoutinesScreen() {
           keyExtractor={(item) => String(item.id)}
           onDragEnd={onDragEnd}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: BOTTOM_BAR_PADDING }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22D3EE" />}
         />
       )}

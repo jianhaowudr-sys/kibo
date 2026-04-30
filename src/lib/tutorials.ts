@@ -24,16 +24,23 @@ export const TUTORIALS: Record<string, Tutorial> = {
   'master-welcome': {
     id: 'master-welcome',
     title: '歡迎來到 Kibo',
-    body: '右上 ⚙️ 自訂顯示，❓ 看小技巧；長按卡片進歷史；右上 ⋯ 進詳細編輯。',
+    body: '所有紀錄（運動/飲食/睡眠/體態/水/排便）都會解放健力% 餵蛋；100% 孵化會抽 8bit 蛋皮膚（茶葉蛋/恐龍蛋/迷因蛋）。右上 ⚙️ 自訂卡片，❓ 看小技巧。',
     scope: 'home',
     icon: '👋',
   },
   'pet-hero-bar': {
     id: 'pet-hero-bar',
-    title: '寵物常駐',
-    body: '頁面頂端的寵物列即時反映 7 天活動心情，點一下進場景頁互動。',
+    title: '寵物常駐 + 蛋進度',
+    body: '頂端寵物列顯示當前蛋的解放健力% 進度與 8bit 像素圖；點一下進場景頁看寵物收藏。',
     scope: 'home',
     icon: '🐣',
+  },
+  'start-workout-toggle': {
+    id: 'start-workout-toggle',
+    title: '開始訓練按鈕可隱藏',
+    body: '不想要每天看到「開始訓練 →」？右上 ⚙️ 自訂首頁取消勾選「▶️ 開始訓練按鈕」就消失。要再開回來也是同地方。',
+    scope: 'home',
+    icon: '▶️',
   },
   'pr-badge': {
     id: 'pr-badge',
@@ -192,15 +199,15 @@ export const TUTORIALS: Record<string, Tutorial> = {
   'liberation-pct': {
     id: 'liberation-pct',
     title: '解放健力百分比',
-    body: '所有紀錄都會解放你的健力 0-100%。一週完整紀錄就能孵蛋，運動是 bonus 加速。',
-    scope: 'pet',
+    body: '生活紀錄為主：吃飯+3%/餐、睡覺+5%、體態+6%、水達標+3%、排便+2%、小睡+1%；運動是 bonus 重訓+10%/有氧+8%/柔軟+5%。連續簽到 7/14/30 天還會額外加。',
+    scope: 'home',
     icon: '⚡',
   },
   'egg-skin': {
     id: 'egg-skin',
     title: '蛋皮膚抽抽樂',
-    body: '達 100% 解放後孵化會抽稀有度（普通/罕見/稀有/傳說），再抽蛋皮膚（茶葉蛋/水煮蛋/恐龍蛋等）。連續 30 天簽到下顆保底罕見以上。',
-    scope: 'pet',
+    body: '達 100% 孵化會抽稀有度（普通 60% / 罕見 30% / 稀有 8% / 傳說 2%）+ 蛋皮膚（茶葉蛋/水煮蛋/恐龍蛋/柴犬迷因等 12 種）。連續 30 天保底罕見以上。',
+    scope: 'home',
     icon: '🥚',
   },
 };
