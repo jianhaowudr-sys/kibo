@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react';
 import { useAppStore } from '@/stores/useAppStore';
 import { displayDate } from '@/lib/date';
 import * as haptic from '@/lib/haptic';
+import { resolvePhotoUri } from '@/lib/photo_storage';
 import type { BodyMeasurement } from '@/db/schema';
 
 type Trend = { label: string; unit: string; getter: (m: BodyMeasurement) => number | null; color: string };
@@ -137,13 +138,16 @@ export default function BodyHistory() {
               onLongPress={() => onDelete(m.id)}
               className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card flex-row items-center gap-3 active:opacity-70"
             >
-              {m.photoUri ? (
-                <Image source={{ uri: m.photoUri }} style={{ width: 56, height: 56, borderRadius: 12 }} />
-              ) : (
-                <View className="w-14 h-14 bg-kibo-card rounded-xl items-center justify-center">
-                  <Text className="text-2xl">📊</Text>
-                </View>
-              )}
+              {(() => {
+                const uri = resolvePhotoUri(m.photoUri);
+                return uri ? (
+                  <Image source={{ uri }} style={{ width: 56, height: 56, borderRadius: 12 }} />
+                ) : (
+                  <View className="w-14 h-14 bg-kibo-card rounded-xl items-center justify-center">
+                    <Text className="text-2xl">📊</Text>
+                  </View>
+                );
+              })()}
               <View className="flex-1">
                 <Text className="text-kibo-text font-semibold">
                   {displayDate(m.measuredAt)}

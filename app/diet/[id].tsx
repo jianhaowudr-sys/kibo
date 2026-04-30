@@ -5,6 +5,7 @@ import * as repo from '@/db/repo';
 import { useAppStore } from '@/stores/useAppStore';
 import { displayDateTime } from '@/lib/date';
 import * as haptic from '@/lib/haptic';
+import { resolvePhotoUri } from '@/lib/photo_storage';
 import type { Meal, MealItem, MealType } from '@/db/schema';
 
 const MEAL_META: Record<MealType, { label: string; emoji: string }> = {
@@ -66,13 +67,16 @@ export default function MealDetail() {
         <Text className="text-kibo-mute text-xs mt-1">{displayDateTime(m.loggedAt)}</Text>
       </View>
 
-      {m.photoUri && (
-        <Image
-          source={{ uri: m.photoUri }}
-          style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 16, marginBottom: 16 }}
-          resizeMode="cover"
-        />
-      )}
+      {(() => {
+        const uri = resolvePhotoUri(m.photoUri);
+        return uri ? (
+          <Image
+            source={{ uri }}
+            style={{ width: '100%', aspectRatio: 4 / 3, borderRadius: 16, marginBottom: 16 }}
+            resizeMode="cover"
+          />
+        ) : null;
+      })()}
 
       <View className="flex-row gap-2 mb-4">
         <View className="flex-1 bg-kibo-surface rounded-2xl p-3 border border-kibo-card items-center">

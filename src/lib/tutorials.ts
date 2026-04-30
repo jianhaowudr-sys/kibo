@@ -175,6 +175,34 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'sleep',
     icon: '😴',
   },
+  'routine-list-drag': {
+    id: 'routine-list-drag',
+    title: '課表可排序',
+    body: '長按任何一張課表卡 0.5 秒可拖曳調整順序，常用的拉到最上面。',
+    scope: 'routines',
+    icon: '≡',
+  },
+  'sleep-main-vs-nap': {
+    id: 'sleep-main-vs-nap',
+    title: '主睡 vs 小睡',
+    body: '上方切「😴 主睡」紀錄昨晚那覺（夜班/早睡晚起都自動歸對日期）；切「🛌 小睡」記午休/補眠不影響主睡。',
+    scope: 'sleep',
+    icon: '😴',
+  },
+  'liberation-pct': {
+    id: 'liberation-pct',
+    title: '解放健力百分比',
+    body: '所有紀錄都會解放你的健力 0-100%。一週完整紀錄就能孵蛋，運動是 bonus 加速。',
+    scope: 'pet',
+    icon: '⚡',
+  },
+  'egg-skin': {
+    id: 'egg-skin',
+    title: '蛋皮膚抽抽樂',
+    body: '達 100% 解放後孵化會抽稀有度（普通/罕見/稀有/傳說），再抽蛋皮膚（茶葉蛋/水煮蛋/恐龍蛋等）。連續 30 天簽到下顆保底罕見以上。',
+    scope: 'pet',
+    icon: '🥚',
+  },
 };
 
 /** 取某 scope 下的全部 tip（給 ❓ icon 重看用） */

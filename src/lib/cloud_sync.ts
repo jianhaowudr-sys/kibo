@@ -155,6 +155,8 @@ async function pushHealthTables(userId: string) {
         user_id: userId, local_id: s.id,
         bedtime_at: toISO(s.bedtimeAt), wake_at: toISO(s.wakeAt),
         duration_min: s.durationMin, quality: s.quality, day_key: s.dayKey,
+        kind: (s as any).kind ?? 'main',
+        assigned_day_key: (s as any).assignedDayKey ?? s.dayKey,
         created_at: toISO(s.createdAt), updated_at: new Date().toISOString(),
       }));
       await supabase.from('sleep_logs').upsert(payload, { onConflict: 'user_id,local_id' });
@@ -284,6 +286,7 @@ async function pushRoutines(userId: string) {
       note: r.note,
       last_snapshot_json: r.lastSnapshotJson ? JSON.parse(r.lastSnapshotJson) : null,
       last_saved_at: toISO(r.lastSavedAt),
+      sort_order: r.sortOrder ?? 0,
       created_at: toISO(r.createdAt),
       updated_at: new Date().toISOString(),
     }));

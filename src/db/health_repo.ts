@@ -27,7 +27,10 @@ const ROW2SLEEP = (r: any): SleepLog => ({
   id: r.id, userId: r.user_id,
   bedtimeAt: new Date(r.bedtime_at), wakeAt: new Date(r.wake_at),
   durationMin: r.duration_min, quality: r.quality,
-  dayKey: r.day_key, createdAt: new Date(r.created_at),
+  dayKey: r.day_key,
+  kind: (r.kind as 'main' | 'nap') ?? 'main',
+  assignedDayKey: r.assigned_day_key ?? r.day_key,
+  createdAt: new Date(r.created_at),
 });
 const ROW2PERIOD = (r: any): PeriodDay => ({
   id: r.id, userId: r.user_id, date: new Date(r.date),
@@ -82,6 +85,42 @@ export async function deleteWaterBatch(batchKey: string): Promise<number[]> {
   for (const r of rows) await enqueueRemoteDelete('water_logs', r.id as number);
   await sqliteDb.runAsync(`DELETE FROM water_logs WHERE batch_key = ?`, [batchKey]);
   return rows.map((r) => r.id as number);
+}
+
+export async function dailyWaterSeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; totalMl: number }[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT date(logged_at / 1000, 'unixepoch', 'localtime') as d, SUM(amount_ml) as total
+     FROM water_logs WHERE user_id = ? AND logged_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, totalMl: r.total ?? 0 }));
+}
+
+export async function dailyBowelSeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; count: number }[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT date(logged_at / 1000, 'unixepoch', 'localtime') as d, COUNT(*) as c
+     FROM bowel_logs WHERE user_id = ? AND logged_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, count: r.c ?? 0 }));
+}
+
+/**
+ * 主睡 + 小睡每日總時長
+ */
+export async function dailySleepSeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; mainMin: number; napMin: number }[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT assigned_day_key as d,
+       SUM(CASE WHEN kind = 'main' THEN duration_min ELSE 0 END) as main_min,
+       SUM(CASE WHEN kind = 'nap' THEN duration_min ELSE 0 END) as nap_min
+     FROM sleep_logs
+     WHERE user_id = ? AND wake_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, mainMin: r.main_min ?? 0, napMin: r.nap_min ?? 0 }));
 }
 
 export async function rangeWaterSummary(userId: number, startMs: number, endMs: number): Promise<{
@@ -193,42 +232,101 @@ function dayKeyFromTs(ts: number): string {
   return `${y}-${m}-${dd}`;
 }
 
+/**
+ * 主睡的歸日：用「睡眠中點」決定，比起 wakeAt 更能正確處理夜班/早上睡晚上起。
+ *
+ * - 23:30 → 06:30：中點 03:00 → 起床日 ✓
+ * - 04:00 → 12:00：中點 08:00 → 起床日 ✓（白天主睡）
+ * - 07:00 (早) → 19:00 (晚)：中點 13:00 → 同一天（夜班正確）
+ */
+function assignedDayKeyForMain(bedtimeAt: number, wakeAt: number): string {
+  const mid = Math.round((bedtimeAt + wakeAt) / 2);
+  return dayKeyFromTs(mid);
+}
+
+/**
+ * 主睡：同一個 assignedDayKey 已有主睡 → 視為同一筆覆寫；否則新增。
+ * 同天可允許多筆主睡（用 source: 'addNew' 強制新增）。
+ */
 export async function upsertSleep(data: {
   userId: number; bedtimeAt: number; wakeAt: number;
   quality?: number;
+  forceNew?: boolean;
 }): Promise<number> {
-  const dayKey = dayKeyFromTs(data.wakeAt);
+  const adk = assignedDayKeyForMain(data.bedtimeAt, data.wakeAt);
   const durationMin = Math.max(0, Math.round((data.wakeAt - data.bedtimeAt) / 60000));
-  const existing = await sqliteDb.getFirstAsync<{ id: number }>(
-    `SELECT id FROM sleep_logs WHERE user_id = ? AND day_key = ?`,
-    [data.userId, dayKey],
-  );
-  if (existing) {
-    await sqliteDb.runAsync(
-      `UPDATE sleep_logs SET bedtime_at = ?, wake_at = ?, duration_min = ?, quality = ? WHERE id = ?`,
-      [data.bedtimeAt, data.wakeAt, durationMin, data.quality ?? 3, existing.id],
+  if (!data.forceNew) {
+    const existing = await sqliteDb.getFirstAsync<{ id: number }>(
+      `SELECT id FROM sleep_logs WHERE user_id = ? AND kind = 'main' AND assigned_day_key = ?
+       ORDER BY created_at DESC LIMIT 1`,
+      [data.userId, adk],
     );
-    return existing.id;
+    if (existing) {
+      await sqliteDb.runAsync(
+        `UPDATE sleep_logs SET bedtime_at = ?, wake_at = ?, duration_min = ?, quality = ?, day_key = ?, assigned_day_key = ? WHERE id = ?`,
+        [data.bedtimeAt, data.wakeAt, durationMin, data.quality ?? 3, dayKeyFromTs(data.wakeAt), adk, existing.id],
+      );
+      return existing.id;
+    }
   }
   const now = Date.now();
   const r = await sqliteDb.runAsync(
-    `INSERT INTO sleep_logs (user_id, bedtime_at, wake_at, duration_min, quality, day_key, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [data.userId, data.bedtimeAt, data.wakeAt, durationMin, data.quality ?? 3, dayKey, now],
+    `INSERT INTO sleep_logs (user_id, bedtime_at, wake_at, duration_min, quality, day_key, kind, assigned_day_key, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'main', ?, ?)`,
+    [data.userId, data.bedtimeAt, data.wakeAt, durationMin, data.quality ?? 3, dayKeyFromTs(data.wakeAt), adk, now],
   );
   return Number(r.lastInsertRowId);
 }
 
+/**
+ * 小睡：永遠新增一筆，assignedDayKey = bedtime 的 dayKey。
+ */
+export async function addNap(data: {
+  userId: number; bedtimeAt: number; wakeAt: number;
+  quality?: number;
+}): Promise<number> {
+  const adk = dayKeyFromTs(data.bedtimeAt);
+  const durationMin = Math.max(0, Math.round((data.wakeAt - data.bedtimeAt) / 60000));
+  const now = Date.now();
+  const r = await sqliteDb.runAsync(
+    `INSERT INTO sleep_logs (user_id, bedtime_at, wake_at, duration_min, quality, day_key, kind, assigned_day_key, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'nap', ?, ?)`,
+    [data.userId, data.bedtimeAt, data.wakeAt, durationMin, data.quality ?? 3, dayKeyFromTs(data.bedtimeAt), adk, now],
+  );
+  return Number(r.lastInsertRowId);
+}
+
+export async function listNapsByDay(userId: number, dayKey: string): Promise<SleepLog[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT * FROM sleep_logs WHERE user_id = ? AND kind = 'nap' AND assigned_day_key = ?
+     ORDER BY bedtime_at ASC`,
+    [userId, dayKey],
+  );
+  return rows.map(ROW2SLEEP);
+}
+
+export async function listMainSleepsByDay(userId: number, dayKey: string): Promise<SleepLog[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT * FROM sleep_logs WHERE user_id = ? AND kind = 'main' AND assigned_day_key = ?
+     ORDER BY wake_at DESC`,
+    [userId, dayKey],
+  );
+  return rows.map(ROW2SLEEP);
+}
+
 export async function getSleepLast(userId: number): Promise<SleepLog | null> {
   const r = await sqliteDb.getFirstAsync<any>(
-    `SELECT * FROM sleep_logs WHERE user_id = ? ORDER BY wake_at DESC LIMIT 1`,
+    `SELECT * FROM sleep_logs WHERE user_id = ? AND kind = 'main' ORDER BY wake_at DESC LIMIT 1`,
     [userId],
   );
   return r ? ROW2SLEEP(r) : null;
 }
 
 export async function getSleepByDay(userId: number, dayKey: string): Promise<SleepLog | null> {
+  // 取該 assignedDayKey 的最新主睡（同天可能多筆主睡，這個函式回主要那筆）
   const r = await sqliteDb.getFirstAsync<any>(
-    `SELECT * FROM sleep_logs WHERE user_id = ? AND day_key = ?`,
+    `SELECT * FROM sleep_logs WHERE user_id = ? AND kind = 'main' AND assigned_day_key = ?
+     ORDER BY wake_at DESC LIMIT 1`,
     [userId, dayKey],
   );
   return r ? ROW2SLEEP(r) : null;
@@ -247,6 +345,7 @@ export async function rangeSleepSummary(userId: number, startMs: number, endMs: 
   count: number; totalMin: number; avgMin: number | null;
   avgQuality: number | null;
   shortest: number | null; longest: number | null;
+  napCount: number; napTotalMin: number;
 }> {
   const r = await sqliteDb.getFirstAsync<any>(
     `SELECT COUNT(*) as c,
@@ -255,7 +354,12 @@ export async function rangeSleepSummary(userId: number, startMs: number, endMs: 
        COALESCE(AVG(quality), 0) as q,
        MIN(duration_min) as mn,
        MAX(duration_min) as mx
-     FROM sleep_logs WHERE user_id = ? AND wake_at BETWEEN ? AND ?`,
+     FROM sleep_logs WHERE user_id = ? AND kind = 'main' AND wake_at BETWEEN ? AND ?`,
+    [userId, startMs, endMs],
+  );
+  const napR = await sqliteDb.getFirstAsync<any>(
+    `SELECT COUNT(*) as c, COALESCE(SUM(duration_min), 0) as total
+     FROM sleep_logs WHERE user_id = ? AND kind = 'nap' AND wake_at BETWEEN ? AND ?`,
     [userId, startMs, endMs],
   );
   const c = r?.c ?? 0;
@@ -266,6 +370,8 @@ export async function rangeSleepSummary(userId: number, startMs: number, endMs: 
     avgQuality: c > 0 ? Math.round((r?.q ?? 0) * 10) / 10 : null,
     shortest: c > 0 ? r?.mn ?? null : null,
     longest: c > 0 ? r?.mx ?? null : null,
+    napCount: napR?.c ?? 0,
+    napTotalMin: napR?.total ?? 0,
   };
 }
 

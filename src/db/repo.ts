@@ -4,6 +4,7 @@ import type {
   Routine, RoutineExercise, BodyMeasurement, NewBodyMeasurement,
   Meal, NewMeal, MealType,
 } from './schema';
+import { savePhotoToDocs, deletePhotoFile } from '@/lib/photo_storage';
 
 type Row = Record<string, any>;
 
@@ -47,6 +48,9 @@ const rowToUser = (r: Row): User => ({
   dashboardLayout: r.dashboard_layout ?? null,
   streakFreezeTokens: r.streak_freeze_tokens ?? 0,
   onboardingCompletedAt: r.onboarding_completed_at ? new Date(r.onboarding_completed_at) : null,
+  consecutiveDays: r.consecutive_days ?? 0,
+  lastActiveDay: r.last_active_day ?? null,
+  nextEggRarityFloor: r.next_egg_rarity_floor ?? null,
 });
 
 const rowToRoutine = (r: Row): Routine => ({
@@ -57,6 +61,7 @@ const rowToRoutine = (r: Row): Routine => ({
   note: r.note,
   lastSnapshotJson: r.last_snapshot_json ?? null,
   lastSavedAt: r.last_saved_at ? new Date(r.last_saved_at) : null,
+  sortOrder: r.sort_order ?? 0,
   createdAt: new Date(r.created_at),
 });
 
@@ -157,6 +162,11 @@ const rowToEgg = (r: Row): Egg => ({
   hatchedAt: r.hatched_at ? new Date(r.hatched_at) : null,
   petId: r.pet_id,
   createdAt: new Date(r.created_at),
+  liberationPct: r.liberation_pct ?? 0,
+  targetPct: r.target_pct ?? 100,
+  skinId: r.skin_id ?? null,
+  rarity: r.rarity ?? null,
+  isLegacy: r.is_legacy ?? 0,
 });
 
 const rowToPet = (r: Row): Pet => ({
@@ -171,6 +181,9 @@ const rowToPet = (r: Row): Pet => ({
   stage: r.stage,
   emoji: r.emoji,
   createdAt: new Date(r.created_at),
+  skinId: r.skin_id ?? null,
+  rarity: r.rarity ?? null,
+  isLegacy: r.is_legacy ?? 1,
 });
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -193,6 +206,14 @@ export async function updateUser(id: number, patch: Partial<User>): Promise<void
   if (patch.lastWorkoutDate !== undefined) { fields.push('last_workout_date = ?'); values.push(patch.lastWorkoutDate); }
   if (patch.totalWorkouts !== undefined) { fields.push('total_workouts = ?'); values.push(patch.totalWorkouts); }
   if (patch.totalExp !== undefined) { fields.push('total_exp = ?'); values.push(patch.totalExp); }
+  if ((patch as any).nextEggRarityFloor !== undefined) {
+    fields.push('next_egg_rarity_floor = ?');
+    values.push((patch as any).nextEggRarityFloor);
+  }
+  if ((patch as any).consecutiveDays !== undefined) {
+    fields.push('consecutive_days = ?');
+    values.push((patch as any).consecutiveDays);
+  }
   if (!fields.length) return;
   values.push(id);
   await sqliteDb.runAsync(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values);
@@ -366,11 +387,21 @@ export async function getActiveEgg(userId: number): Promise<Egg | null> {
 }
 
 export async function createEgg(userId: number, type: EggType, required = 500): Promise<number> {
+  // v1.0.2 新蛋：is_legacy=0, liberation_pct=0, target_pct=100；type 保留作為「外觀偏好」但不再影響加分管道
   const result = await sqliteDb.runAsync(
-    'INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at) VALUES (?, ?, 0, ?, 0, ?)',
+    `INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at,
+       liberation_pct, target_pct, is_legacy)
+     VALUES (?, ?, 0, ?, 0, ?, 0, 100, 0)`,
     [userId, type, required, Date.now()],
   );
   return result.lastInsertRowId as number;
+}
+
+export async function setEggSkin(eggId: number, skinId: string, rarity: string): Promise<void> {
+  await sqliteDb.runAsync(
+    `UPDATE eggs SET skin_id = ?, rarity = ? WHERE id = ?`,
+    [skinId, rarity, eggId],
+  );
 }
 
 export async function addExpToEgg(eggId: number, exp: number): Promise<void> {
@@ -389,11 +420,16 @@ export async function hatchEgg(eggId: number, petId: number): Promise<void> {
 
 export async function createPet(data: {
   userId: number; eggId: number; name: string; species: string; type: EggType; emoji: string;
+  skinId?: string | null; rarity?: string | null; isLegacy?: number;
 }): Promise<number> {
   const result = await sqliteDb.runAsync(
-    `INSERT INTO pets (user_id, egg_id, name, species, type, level, exp, stage, emoji, created_at)
-     VALUES (?, ?, ?, ?, ?, 1, 0, 1, ?, ?)`,
-    [data.userId, data.eggId, data.name, data.species, data.type, data.emoji, Date.now()],
+    `INSERT INTO pets (user_id, egg_id, name, species, type, level, exp, stage, emoji, created_at,
+       skin_id, rarity, is_legacy)
+     VALUES (?, ?, ?, ?, ?, 1, 0, 1, ?, ?, ?, ?, ?)`,
+    [
+      data.userId, data.eggId, data.name, data.species, data.type, data.emoji, Date.now(),
+      data.skinId ?? null, data.rarity ?? null, data.isLegacy ?? 0,
+    ],
   );
   return result.lastInsertRowId as number;
 }
@@ -499,6 +535,45 @@ export async function workoutsByDate(userId: number, dateKey: string): Promise<W
   return rs.map(rowToWorkout);
 }
 
+export async function dailyWorkoutSeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; exp: number; volume: number; durSec: number }[]> {
+  const rows = await sqliteDb.getAllAsync<Row>(
+    `SELECT date(started_at / 1000, 'unixepoch', 'localtime') as d,
+       COALESCE(SUM(total_exp), 0) as e,
+       COALESCE(SUM(total_volume), 0) as v,
+       COALESCE(SUM(duration_sec), 0) as ds
+     FROM workouts
+     WHERE user_id = ? AND ended_at IS NOT NULL AND started_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, exp: r.e ?? 0, volume: r.v ?? 0, durSec: r.ds ?? 0 }));
+}
+
+export async function dailyMealSeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; calories: number; protein: number }[]> {
+  const rows = await sqliteDb.getAllAsync<Row>(
+    `SELECT date(logged_at / 1000, 'unixepoch', 'localtime') as d,
+       COALESCE(SUM(calories_kcal), 0) as c,
+       COALESCE(SUM(protein_g), 0) as p
+     FROM meals
+     WHERE user_id = ? AND logged_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, calories: r.c ?? 0, protein: r.p ?? 0 }));
+}
+
+export async function dailyBodySeries(userId: number, startMs: number, endMs: number): Promise<{ dateKey: string; weightKg: number | null; bodyFatPct: number | null }[]> {
+  const rows = await sqliteDb.getAllAsync<Row>(
+    `SELECT date(measured_at / 1000, 'unixepoch', 'localtime') as d,
+       AVG(weight_kg) as w, AVG(body_fat_pct) as bf
+     FROM body_measurements
+     WHERE user_id = ? AND measured_at BETWEEN ? AND ?
+     GROUP BY d ORDER BY d ASC`,
+    [userId, startMs, endMs],
+  );
+  return rows.map((r) => ({ dateKey: r.d, weightKg: r.w, bodyFatPct: r.bf }));
+}
+
 export async function rangeWorkoutSummary(userId: number, startMs: number, endMs: number): Promise<{
   count: number; totalExp: number; totalVolume: number; totalDurSec: number; uniqueDays: number;
 }> {
@@ -599,10 +674,19 @@ export async function weeklyWorkoutCount(userId: number): Promise<number> {
 
 export async function listRoutines(userId: number): Promise<Routine[]> {
   const rs = await sqliteDb.getAllAsync<Row>(
-    'SELECT * FROM routines WHERE user_id = ? ORDER BY created_at DESC',
+    'SELECT * FROM routines WHERE user_id = ? ORDER BY sort_order ASC, created_at DESC',
     [userId],
   );
   return rs.map(rowToRoutine);
+}
+
+export async function reorderRoutines(orderedIds: number[]): Promise<void> {
+  for (let i = 0; i < orderedIds.length; i++) {
+    await sqliteDb.runAsync(
+      'UPDATE routines SET sort_order = ? WHERE id = ?',
+      [i, orderedIds[i]],
+    );
+  }
 }
 
 export async function getRoutine(id: number): Promise<Routine | null> {
@@ -723,6 +807,7 @@ export async function getMeal(id: number): Promise<Meal | null> {
 }
 
 export async function createMeal(data: Omit<NewMeal, 'id' | 'createdAt'> & { loggedAt: Date | number }): Promise<number> {
+  const persistedPhoto = await savePhotoToDocs(data.photoUri ?? null, 'meals');
   const result = await sqliteDb.runAsync(
     `INSERT INTO meals
        (user_id, logged_at, meal_type, title, items_json, calories_kcal, protein_g, carb_g, fat_g, photo_uri, note, ai_parsed, created_at)
@@ -737,7 +822,7 @@ export async function createMeal(data: Omit<NewMeal, 'id' | 'createdAt'> & { log
       data.proteinG ?? null,
       data.carbG ?? null,
       data.fatG ?? null,
-      data.photoUri ?? null,
+      persistedPhoto,
       data.note ?? null,
       data.aiParsed ? 1 : 0,
       Date.now(),
@@ -768,6 +853,8 @@ export async function updateMeal(id: number, patch: Partial<{
 }
 
 export async function deleteMeal(id: number): Promise<void> {
+  const r = await sqliteDb.getFirstAsync<Row>('SELECT photo_uri FROM meals WHERE id = ?', [id]);
+  if (r?.photo_uri) await deletePhotoFile(r.photo_uri);
   await enqueueRemoteDelete('meals', id);
   await sqliteDb.runAsync('DELETE FROM meals WHERE id = ?', [id]);
 }
@@ -807,6 +894,7 @@ export async function getBodyMeasurement(id: number): Promise<BodyMeasurement | 
 }
 
 export async function createBodyMeasurement(data: Omit<NewBodyMeasurement, 'id' | 'createdAt'> & { measuredAt: Date | number }): Promise<number> {
+  const persistedPhoto = await savePhotoToDocs(data.photoUri ?? null, 'body');
   const result = await sqliteDb.runAsync(
     `INSERT INTO body_measurements
       (user_id, measured_at, weight_kg, body_fat_pct, skeletal_muscle_kg, muscle_mass_kg,
@@ -827,7 +915,7 @@ export async function createBodyMeasurement(data: Omit<NewBodyMeasurement, 'id' 
       data.bmr ?? null,
       data.visceralFatLevel ?? null,
       data.bodyScore ?? null,
-      data.photoUri ?? null,
+      persistedPhoto,
       data.note ?? null,
       Date.now(),
     ],
@@ -836,6 +924,8 @@ export async function createBodyMeasurement(data: Omit<NewBodyMeasurement, 'id' 
 }
 
 export async function deleteBodyMeasurement(id: number): Promise<void> {
+  const r = await sqliteDb.getFirstAsync<Row>('SELECT photo_uri FROM body_measurements WHERE id = ?', [id]);
+  if (r?.photo_uri) await deletePhotoFile(r.photo_uri);
   await enqueueRemoteDelete('body_measurements', id);
   await sqliteDb.runAsync('DELETE FROM body_measurements WHERE id = ?', [id]);
 }
@@ -908,13 +998,14 @@ export async function createCustomFood(data: {
   caloriesKcal: number; proteinG: number; carbG: number; fatG: number;
   portion?: string | null; photoUri?: string | null; source?: 'manual' | 'ai';
 }): Promise<number> {
+  const persistedPhoto = await savePhotoToDocs(data.photoUri ?? null, 'food_library');
   const r = await sqliteDb.runAsync(
     `INSERT INTO custom_foods (user_id, name, emoji, calories_kcal, protein_g, carb_g, fat_g, portion, photo_uri, source, use_count, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     [
       data.userId, data.name, data.emoji ?? '🍽',
       data.caloriesKcal, data.proteinG, data.carbG, data.fatG,
-      data.portion ?? null, data.photoUri ?? null, data.source ?? 'manual',
+      data.portion ?? null, persistedPhoto, data.source ?? 'manual',
       Date.now(),
     ],
   );

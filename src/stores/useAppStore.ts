@@ -20,6 +20,15 @@ export type PlannedSet = {
 import * as repo from '@/db/repo';
 import { PET_SPECIES } from '@/data/exercises';
 import { calcSetExp, calcVolume } from '@/lib/exp';
+import {
+  addLiberationPoints,
+  tickConsecutiveDay,
+  workoutPointsFor,
+  LIBERATION_PER_EVENT,
+  type WorkoutKind,
+} from '@/lib/liberation_score';
+import { rollRarity, rollSkin, getSkinById, EGG_SKINS } from '@/data/egg_skins';
+import type { ScoreSource, EggRarity } from '@/db/schema';
 
 let _syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 import { todayKey } from '@/lib/date';
@@ -93,7 +102,15 @@ type State = {
   tempSelectedExerciseIds: number[];
   currentRoutineId: number | null;
 
-  pendingHatch: { eggId: number; petName: string; emoji: string; type: EggType } | null;
+  pendingHatch: {
+    eggId: number;
+    petName: string;
+    emoji: string;
+    type: EggType;
+    skinId?: string | null;
+    rarity?: EggRarity | null;
+    isLegacy?: boolean;
+  } | null;
 };
 
 type Actions = {
@@ -127,6 +144,7 @@ type Actions = {
   deleteCustomExercise: (id: number) => Promise<void>;
 
   refreshRoutines: () => Promise<void>;
+  reorderRoutines: (orderedIds: number[]) => Promise<void>;
   refreshBodyMeasurements: () => Promise<void>;
   addBodyMeasurement: (data: Omit<import('@/db/schema').NewBodyMeasurement, 'id' | 'createdAt' | 'userId'> & { measuredAt: Date | number }) => Promise<void>;
   deleteBodyMeasurement: (id: number) => Promise<void>;
@@ -161,7 +179,13 @@ type Actions = {
   addWater: (amountMl: number, opts?: { batch?: boolean }) => Promise<void>;
   addBowel: (opts?: { bristol?: number; hasBlood?: number; hasPain?: number; notes?: string }) => Promise<number>;
   upsertBowel: (id: number, patch: { bristol?: number; hasBlood?: number; hasPain?: number; notes?: string }) => Promise<void>;
-  upsertSleep: (data: { bedtimeAt: number; wakeAt: number; quality?: number }) => Promise<void>;
+  upsertSleep: (data: { bedtimeAt: number; wakeAt: number; quality?: number; forceNew?: boolean }) => Promise<void>;
+  addNap: (data: { bedtimeAt: number; wakeAt: number; quality?: number }) => Promise<void>;
+  awardLiberation: (source: ScoreSource, opts?: {
+    sourceId?: number | null;
+    basePoints?: number;
+    workoutKind?: WorkoutKind;
+  }) => Promise<{ pointsGranted: number; hatched: boolean } | null>;
   upsertPeriodDay: (data: { date: number; flow?: PeriodFlow; symptoms?: string[]; notes?: string; isCycleStart?: boolean }) => Promise<void>;
   endCurrentPeriod: () => Promise<void>;
   loadHealthSettings: () => Promise<void>;
@@ -463,7 +487,8 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     }
 
     let hatched = false;
-    if (activeEgg) {
+    // Legacy 蛋繼續走舊 EXP 路徑（保留歷史用戶體驗）；新蛋（is_legacy=0）由下方 awardLiberation 處理
+    if (activeEgg && (activeEgg as any).isLegacy === 1) {
       await repo.addExpToEgg(activeEgg.id, totalExp);
       const newCurrent = activeEgg.currentExp + totalExp;
       if (newCurrent >= activeEgg.requiredExp) {
@@ -476,6 +501,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
             petName: pick.name,
             emoji: pick.emoji,
             type: activeEgg.type as EggType,
+            isLegacy: true,
           },
         });
       } else {
@@ -488,6 +514,18 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     }
 
     set({ currentWorkoutId: null, activeSets: [], workoutStartedAt: null });
+
+    // v1.0.2 解放健力% 引擎：判定 workoutKind（取最多 set 對應的 category）
+    const kindCount: Record<string, number> = {};
+    for (const s of activeSets) {
+      const c = s.exercise.category;
+      kindCount[c] = (kindCount[c] ?? 0) + 1;
+    }
+    const dominantKind = (Object.entries(kindCount).sort((a, b) => b[1] - a[1])[0]?.[0]) as WorkoutKind | undefined;
+    const workoutKind: WorkoutKind = dominantKind === 'cardio' || dominantKind === 'flex' ? dominantKind : 'strength';
+    const liberation = await get().awardLiberation('workout', { sourceId: currentWorkoutId, workoutKind });
+    if (liberation?.hatched) hatched = true;
+
     await get().refreshUser();
     await get().refreshEgg();
     await get().refreshPets();
@@ -612,6 +650,20 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     set({ routines });
   },
 
+  reorderRoutines: async (orderedIds: number[]) => {
+    const current = get().routines;
+    const byId = new Map(current.map((r) => [r.id, r]));
+    const next = orderedIds
+      .map((id, idx) => {
+        const r = byId.get(id);
+        return r ? { ...r, sortOrder: idx } : null;
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x);
+    set({ routines: next });
+    await repo.reorderRoutines(orderedIds);
+    get().enqueueSync?.();
+  },
+
   refreshBodyMeasurements: async () => {
     const { user } = get();
     if (!user) return;
@@ -622,12 +674,13 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   addBodyMeasurement: async (data) => {
     const { user } = get();
     if (!user) throw new Error('no user');
-    await repo.createBodyMeasurement({ ...data, userId: user.id });
+    const bodyId = await repo.createBodyMeasurement({ ...data, userId: user.id });
     if (data.weightKg) {
       await repo.updateUser(user.id, { weightKg: data.weightKg });
     }
     await get().refreshBodyMeasurements();
     await get().refreshUser();
+    await get().awardLiberation('body', { sourceId: bodyId });
     get().enqueueSync?.();
   },
 
@@ -652,6 +705,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     if (!user) throw new Error('no user');
     const id = await repo.createMeal({ ...data, userId: user.id });
     await get().refreshTodayMeals();
+    await get().awardLiberation('meal', { sourceId: id });
     get().enqueueSync?.();
     return id;
   },
@@ -840,8 +894,15 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     if (!batchKey && opts?.batch !== false) {
       batchKey = `b_${now}`;
     }
+    // 加水前的當日總量
+    const beforeTotal = get().waterToday.reduce((s, w) => s + (w.amountMl ?? 0), 0);
+    const goal = get().healthSettings.water.dailyGoalMl;
     const id = await healthRepo.addWater({ userId: u.id, amountMl, loggedAt: now, batchKey });
     await get().refreshHealth();
+    // 第一次達標才加分（避免重複）
+    if (beforeTotal < goal && beforeTotal + amountMl >= goal) {
+      await get().awardLiberation('water', { sourceId: id });
+    }
     get().enqueueSync?.();
     // push undo（以 batchKey 為主）
     if (batchKey) {
@@ -872,6 +933,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     if (!u) return 0;
     const id = await healthRepo.addBowel({ userId: u.id, ...(opts ?? {}) });
     await get().refreshHealth();
+    await get().awardLiberation('bowel', { sourceId: id });
     get().enqueueSync?.();
     get().pushUndo({
       id: `bowel-${id}`,
@@ -894,9 +956,54 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   upsertSleep: async (data) => {
     const u = get().user;
     if (!u) return;
-    await healthRepo.upsertSleep({ userId: u.id, ...data });
+    const id = await healthRepo.upsertSleep({ userId: u.id, ...data });
     await get().refreshHealth();
+    await get().awardLiberation('sleep', { sourceId: id });
     get().enqueueSync?.();
+  },
+
+  addNap: async (data) => {
+    const u = get().user;
+    if (!u) return;
+    const id = await healthRepo.addNap({ userId: u.id, ...data });
+    await get().refreshHealth();
+    await get().awardLiberation('nap', { sourceId: id });
+    get().enqueueSync?.();
+  },
+
+  awardLiberation: async (source, opts) => {
+    const u = get().user;
+    if (!u) return null;
+    // 連續簽到先 tick（內部冪等：同天只做一次）
+    const tick = await tickConsecutiveDay(u.id);
+    const base = source === 'workout'
+      ? workoutPointsFor(opts?.workoutKind ?? 'strength')
+      : (opts?.basePoints ?? LIBERATION_PER_EVENT[source]);
+    const result = await addLiberationPoints(u.id, source, base, opts?.sourceId ?? null);
+
+    if (result.hatched && result.hatchEggId) {
+      // 抽稀有度（用 user.next_egg_rarity_floor 保底）→ 抽皮膚
+      const rarity = rollRarity(tick.rarityFloor);
+      const skin = rollSkin(rarity);
+      // 把皮膚寫到蛋上（孵化前定型，confirmHatch 時建立 pet）
+      await repo.setEggSkin(result.hatchEggId, skin.id, rarity);
+      set({
+        pendingHatch: {
+          eggId: result.hatchEggId,
+          petName: skin.label,
+          emoji: skin.emojiFallback,
+          type: 'strength',  // 新蛋系統不再分類，但保留欄位給舊 UI 相容
+          skinId: skin.id,
+          rarity,
+          isLegacy: false,
+        },
+      });
+      // 用過的稀有度保底要清掉（下顆蛋重新走機率）
+      await repo.updateUser(u.id, { nextEggRarityFloor: null } as any);
+    }
+    await get().refreshUser();
+    await get().refreshEgg();
+    return { pointsGranted: result.pointsGranted, hatched: result.hatched };
   },
 
   upsertPeriodDay: async (data) => {
@@ -1388,6 +1495,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       species: pendingHatch.petName,
       type: pendingHatch.type,
       emoji: pendingHatch.emoji,
+      skinId: pendingHatch.skinId ?? null,
+      rarity: pendingHatch.rarity ?? null,
+      isLegacy: pendingHatch.isLegacy ? 1 : 0,
     });
 
     await repo.hatchEgg(pendingHatch.eggId, petId);
@@ -1397,6 +1507,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       await get().setOnboardingPetName(null);
     }
 
+    // 新蛋（is_legacy=0）走 v1.0.2 新流程：建一顆乾淨的新蛋（liberation_pct=0），不再分三類
     const nextTypes: EggType[] = ['strength', 'cardio', 'flex'];
     const idx = Math.floor(Math.random() * nextTypes.length);
     await repo.createEgg(user.id, nextTypes[idx], 500);

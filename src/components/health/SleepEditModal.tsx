@@ -46,6 +46,8 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
   const sleepLast = useAppStore((s) => s.sleepLast);
   const settings = useAppStore((s) => s.healthSettings);
   const upsertSleep = useAppStore((s) => s.upsertSleep);
+  const addNap = useAppStore((s) => s.addNap);
+  const [kind, setKind] = useState<'main' | 'nap'>('main');
 
   // 預設值來源：promptMode → 昨晚 / 今早；非 prompt → 既有紀錄 OR 設定 target
   const defaults = useMemo(() => {
@@ -83,6 +85,7 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
       setBedDayOffset(dayOffsetFromToday(defaults.bedtime));
       setWakeDayOffset(dayOffsetFromToday(defaults.wake));
       setQuality(promptMode ? 3 : (sleepLast?.quality ?? 3));
+      setKind('main');
     }
   }, [visible, defaults, sleepLast, promptMode]);
 
@@ -109,7 +112,11 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
       return;
     }
     haptic.success();
-    await upsertSleep({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality });
+    if (kind === 'nap') {
+      await addNap({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality });
+    } else {
+      await upsertSleep({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality });
+    }
     onClose();
   };
 
@@ -179,6 +186,30 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
           </View>
 
           <ScrollView>
+            {!promptMode && (
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                {([
+                  { key: 'main', label: '😴 主睡', desc: '昨晚那覺' },
+                  { key: 'nap', label: '🛌 小睡', desc: '午休/補眠' },
+                ] as const).map((opt) => {
+                  const active = kind === opt.key;
+                  return (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => { haptic.tapLight(); setKind(opt.key); }}
+                      style={{
+                        flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+                        backgroundColor: active ? palette.primary : palette.card,
+                      }}
+                    >
+                      <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '700' }}>{opt.label}</Text>
+                      <Text style={{ color: active ? palette.bg : palette.mute, fontSize: 10, marginTop: 2 }}>{opt.desc}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>上床日期</Text>
             <DayPills value={bedDayOffset} onChange={setBedDayOffset} />
             <HMRow label={`上床時間（${dayOffsetLabel(bedDayOffset)}）`} h={bedH} m={bedM} setH={setBedH} setM={setBedM} />

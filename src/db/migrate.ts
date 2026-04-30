@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS routines (
   note TEXT,
   last_snapshot_json TEXT,
   last_saved_at INTEGER,
+  sort_order INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 
@@ -124,7 +125,12 @@ CREATE TABLE IF NOT EXISTS eggs (
   stage INTEGER NOT NULL DEFAULT 0,
   hatched_at INTEGER,
   pet_id INTEGER,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  liberation_pct REAL NOT NULL DEFAULT 0,
+  target_pct REAL NOT NULL DEFAULT 100,
+  skin_id TEXT,
+  rarity TEXT,
+  is_legacy INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS pets (
@@ -138,8 +144,23 @@ CREATE TABLE IF NOT EXISTS pets (
   exp INTEGER NOT NULL DEFAULT 0,
   stage INTEGER NOT NULL DEFAULT 1,
   emoji TEXT NOT NULL DEFAULT '🐣',
+  created_at INTEGER NOT NULL,
+  skin_id TEXT,
+  rarity TEXT,
+  is_legacy INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS daily_scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  day_key TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_id INTEGER,
+  points REAL NOT NULL,
   created_at INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_daily_scores_user_day ON daily_scores(user_id, day_key);
 
 CREATE TABLE IF NOT EXISTS achievements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +199,8 @@ CREATE TABLE IF NOT EXISTS sleep_logs (
   duration_min INTEGER NOT NULL,
   quality INTEGER NOT NULL DEFAULT 3,
   day_key TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'main',
+  assigned_day_key TEXT,
   created_at INTEGER NOT NULL
 );
 
@@ -283,6 +306,11 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('routines', 'last_saved_at'))) {
     await sqliteDb.runAsync('ALTER TABLE routines ADD COLUMN last_saved_at INTEGER');
   }
+  if (!(await hasColumn('routines', 'sort_order'))) {
+    await sqliteDb.runAsync('ALTER TABLE routines ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+    // 回填：用 id 當初始 sort_order 保持原 created_at DESC 順序（id 大者在前）
+    await sqliteDb.runAsync('UPDATE routines SET sort_order = -id WHERE sort_order = 0');
+  }
   // 健康模組相關的 users 欄位
   if (!(await hasColumn('users', 'health_settings'))) {
     await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN health_settings TEXT');
@@ -306,6 +334,65 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('workout_sets', 'speed_kmh'))) {
     await sqliteDb.runAsync('ALTER TABLE workout_sets ADD COLUMN speed_kmh REAL');
   }
+
+  // v1.0.2: 睡眠片段模型
+  if (!(await hasColumn('sleep_logs', 'kind'))) {
+    await sqliteDb.runAsync(`ALTER TABLE sleep_logs ADD COLUMN kind TEXT NOT NULL DEFAULT 'main'`);
+  }
+  if (!(await hasColumn('sleep_logs', 'assigned_day_key'))) {
+    await sqliteDb.runAsync('ALTER TABLE sleep_logs ADD COLUMN assigned_day_key TEXT');
+    await sqliteDb.runAsync('UPDATE sleep_logs SET assigned_day_key = day_key WHERE assigned_day_key IS NULL');
+  }
+
+  // v1.0.2: 解放健力% 系統 — eggs / pets / users 加欄位
+  if (!(await hasColumn('eggs', 'liberation_pct'))) {
+    await sqliteDb.runAsync('ALTER TABLE eggs ADD COLUMN liberation_pct REAL NOT NULL DEFAULT 0');
+    // 回填：把現有 current_exp / required_exp 換算成 liberation_pct
+    await sqliteDb.runAsync(
+      `UPDATE eggs SET liberation_pct = MIN(100, ROUND(CAST(current_exp AS REAL) / CAST(MAX(required_exp, 1) AS REAL) * 100, 2))
+       WHERE current_exp > 0`,
+    );
+  }
+  if (!(await hasColumn('eggs', 'target_pct'))) {
+    await sqliteDb.runAsync('ALTER TABLE eggs ADD COLUMN target_pct REAL NOT NULL DEFAULT 100');
+  }
+  if (!(await hasColumn('eggs', 'skin_id'))) {
+    await sqliteDb.runAsync('ALTER TABLE eggs ADD COLUMN skin_id TEXT');
+  }
+  if (!(await hasColumn('eggs', 'rarity'))) {
+    await sqliteDb.runAsync('ALTER TABLE eggs ADD COLUMN rarity TEXT');
+  }
+  if (!(await hasColumn('eggs', 'is_legacy'))) {
+    await sqliteDb.runAsync('ALTER TABLE eggs ADD COLUMN is_legacy INTEGER NOT NULL DEFAULT 0');
+    // 既有蛋（liberation_pct > 0 表示已用過經驗值）標 legacy
+    await sqliteDb.runAsync('UPDATE eggs SET is_legacy = 1 WHERE current_exp > 0');
+  }
+
+  if (!(await hasColumn('pets', 'skin_id'))) {
+    await sqliteDb.runAsync('ALTER TABLE pets ADD COLUMN skin_id TEXT');
+  }
+  if (!(await hasColumn('pets', 'rarity'))) {
+    await sqliteDb.runAsync('ALTER TABLE pets ADD COLUMN rarity TEXT');
+  }
+  if (!(await hasColumn('pets', 'is_legacy'))) {
+    // 所有現有寵物都是 legacy
+    await sqliteDb.runAsync('ALTER TABLE pets ADD COLUMN is_legacy INTEGER NOT NULL DEFAULT 1');
+  }
+
+  if (!(await hasColumn('users', 'consecutive_days'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN consecutive_days INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!(await hasColumn('users', 'last_active_day'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN last_active_day TEXT');
+  }
+  if (!(await hasColumn('users', 'next_egg_rarity_floor'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN next_egg_rarity_floor TEXT');
+  }
+
+  // daily_scores 表：CREATE TABLE IF NOT EXISTS 已在 SCHEMA_SQL 處理，這裡確保 index 存在
+  await sqliteDb.runAsync(
+    'CREATE INDEX IF NOT EXISTS idx_daily_scores_user_day ON daily_scores(user_id, day_key)',
+  );
 }
 
 async function seedV2IfNeeded(): Promise<void> {

@@ -9,6 +9,7 @@ import { MonthCalendar } from '@/components/MonthCalendar';
 import { displayTime, formatDuration } from '@/lib/date';
 import { eggProgress, EGG_STAGE_LABEL, eggStage, eggConfigFor } from '@/lib/pets';
 import { levelFromExp } from '@/lib/exp';
+import { EggSprite, stageFromPct } from '@/components/pet/EggSprite';
 import * as haptic from '@/lib/haptic';
 import * as repo from '@/db/repo';
 import { SWIPE_OVERSHOOT, SWIPE_RIGHT_THRESHOLD } from '@/lib/gestures';
@@ -165,9 +166,15 @@ export default function HomeScreen() {
               }}
               className="items-center"
             >
-              <Text className="text-3xl">🥚</Text>
+              {(egg as any).isLegacy === 0 ? (
+                <EggSprite skinId={(egg as any).skinId ?? 'plain_white'} stage={stageFromPct((egg as any).liberationPct ?? 0)} size={36} />
+              ) : (
+                <Text className="text-3xl">🥚</Text>
+              )}
               <Text className="text-kibo-mute text-[10px]">
-                {egg.currentExp}/{egg.requiredExp}
+                {(egg as any).isLegacy === 0
+                  ? `${Math.round((egg as any).liberationPct ?? 0)}%`
+                  : `${egg.currentExp}/${egg.requiredExp}`}
               </Text>
             </Pressable>
           )}
@@ -284,21 +291,21 @@ export default function HomeScreen() {
               </Pressable>
             </Swipeable>
           ))}
-
-          {isToday && (
-            <Pressable
-              onPress={onStart}
-              className="bg-kibo-primary rounded-2xl py-5 mt-2 active:opacity-70"
-            >
-              <Text className="text-kibo-bg text-center text-xl font-bold">
-                {currentWorkoutId ? '繼續訓練 →' : '開始訓練 →'}
-              </Text>
-              <Text className="text-kibo-bg/70 text-center text-xs mt-1">
-                每次運動都會餵養你的蛋
-              </Text>
-            </Pressable>
-          )}
         </View>
+        )}
+
+        {isCardVisible('start-workout-button') && isToday && (
+          <Pressable
+            onPress={onStart}
+            className="bg-kibo-primary rounded-2xl py-5 mt-3 active:opacity-70"
+          >
+            <Text className="text-kibo-bg text-center text-xl font-bold">
+              {currentWorkoutId ? '繼續訓練 →' : '開始訓練 →'}
+            </Text>
+            <Text className="text-kibo-bg/70 text-center text-xs mt-1">
+              每次運動都會餵養你的蛋
+            </Text>
+          </Pressable>
         )}
       </ScrollView>
 

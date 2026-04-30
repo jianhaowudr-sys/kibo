@@ -5,6 +5,7 @@ import * as repo from '@/db/repo';
 import { useAppStore } from '@/stores/useAppStore';
 import { displayDate } from '@/lib/date';
 import * as haptic from '@/lib/haptic';
+import { resolvePhotoUri } from '@/lib/photo_storage';
 import type { BodyMeasurement } from '@/db/schema';
 
 const FIELDS: { key: keyof BodyMeasurement; label: string; unit: string }[] = [
@@ -58,11 +59,14 @@ export default function BodyDetail() {
         <Text className="text-kibo-text text-2xl font-bold mt-1">{displayDate(m.measuredAt)}</Text>
       </View>
 
-      {m.photoUri && (
-        <View className="mb-4">
-          <Image source={{ uri: m.photoUri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 16 }} resizeMode="contain" />
-        </View>
-      )}
+      {(() => {
+        const uri = resolvePhotoUri(m.photoUri);
+        return uri ? (
+          <View className="mb-4">
+            <Image source={{ uri }} style={{ width: '100%', aspectRatio: 3 / 4, borderRadius: 16 }} resizeMode="contain" />
+          </View>
+        ) : null;
+      })()}
 
       <Text className="text-kibo-text text-base font-bold mb-2">體組成</Text>
       <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-4">

@@ -23,6 +23,10 @@ export const users = sqliteTable('users', {
   streakFreezeTokens: integer('streak_freeze_tokens').notNull().default(0),
   // onboarding 完成旗標
   onboardingCompletedAt: integer('onboarding_completed_at', { mode: 'timestamp_ms' }),
+  // v1.0.2 解放健力% 系統：連續簽到 + 下顆蛋稀有度保底
+  consecutiveDays: integer('consecutive_days').notNull().default(0),
+  lastActiveDay: text('last_active_day'),
+  nextEggRarityFloor: text('next_egg_rarity_floor'),
 });
 
 export const routines = sqliteTable('routines', {
@@ -33,6 +37,7 @@ export const routines = sqliteTable('routines', {
   note: text('note'),
   lastSnapshotJson: text('last_snapshot_json'),
   lastSavedAt: integer('last_saved_at', { mode: 'timestamp_ms' }),
+  sortOrder: integer('sort_order').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -137,6 +142,12 @@ export const eggs = sqliteTable('eggs', {
   hatchedAt: integer('hatched_at', { mode: 'timestamp_ms' }),
   petId: integer('pet_id'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  // v1.0.2 解放健力% 系統
+  liberationPct: real('liberation_pct').notNull().default(0),
+  targetPct: real('target_pct').notNull().default(100),
+  skinId: text('skin_id'),
+  rarity: text('rarity'),
+  isLegacy: integer('is_legacy').notNull().default(0),
 });
 
 export const pets = sqliteTable('pets', {
@@ -150,6 +161,21 @@ export const pets = sqliteTable('pets', {
   exp: integer('exp').notNull().default(0),
   stage: integer('stage').notNull().default(1),
   emoji: text('emoji').notNull().default('🐣'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  // v1.0.2：新蛋系統的皮膚 + 稀有度
+  skinId: text('skin_id'),
+  rarity: text('rarity'),
+  isLegacy: integer('is_legacy').notNull().default(1),
+});
+
+// v1.0.2 解放健力% 加分明細
+export const dailyScores = sqliteTable('daily_scores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  dayKey: text('day_key').notNull(),
+  source: text('source').notNull(),  // 'meal' | 'workout' | 'sleep' | 'body' | 'water' | 'bowel' | 'nap' | 'streak'
+  sourceId: integer('source_id'),
+  points: real('points').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -183,8 +209,13 @@ export const sleepLogs = sqliteTable('sleep_logs', {
   wakeAt: integer('wake_at', { mode: 'timestamp_ms' }).notNull(),
   durationMin: integer('duration_min').notNull(),
   quality: integer('quality').notNull().default(3),     // 1~5
-  // 起床日期 yyyy-mm-dd（同人同天 unique，重複 upsert）
+  // 起床日期 yyyy-mm-dd（保留原欄位，舊版相容）
   dayKey: text('day_key').notNull(),
+  // v1.0.2 片段模型：
+  // - 'main' 主睡：assignedDayKey 用「(bedtimeAt + wakeAt) / 2」中點 dayKey；同天可有多筆（分段睡）
+  // - 'nap'  小睡：assignedDayKey 用 bedtimeAt dayKey；不影響主睡統計
+  kind: text('kind').notNull().default('main'),
+  assignedDayKey: text('assigned_day_key'),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
@@ -311,6 +342,10 @@ export type CustomFood = typeof customFoods.$inferSelect;
 export type NewCustomFood = typeof customFoods.$inferInsert;
 export type TrinityCompletion = typeof trinityCompletions.$inferSelect;
 export type NewTrinityCompletion = typeof trinityCompletions.$inferInsert;
+export type DailyScore = typeof dailyScores.$inferSelect;
+export type NewDailyScore = typeof dailyScores.$inferInsert;
+export type EggRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'legacy';
+export type ScoreSource = 'meal' | 'workout' | 'sleep' | 'body' | 'water' | 'bowel' | 'nap' | 'streak';
 
 export type BristolType = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type PeriodFlow = 'spot' | 'light' | 'medium' | 'heavy';

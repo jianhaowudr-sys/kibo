@@ -48,8 +48,15 @@ export function PetHeroBar() {
   }, [user?.id, pet?.id]);
 
   const showEgg = !pet && !!egg;
+  // v1.0.2: legacy 蛋繼續走 currentExp，新蛋走 liberation_pct
+  const isLegacyEgg = egg ? (egg as any).isLegacy === 1 : false;
+  const eggPct = egg
+    ? isLegacyEgg
+      ? (egg.requiredExp > 0 ? egg.currentExp / egg.requiredExp : 0)
+      : ((egg as any).liberationPct ?? 0) / 100
+    : 0;
   const eggStage = egg
-    ? egg.currentExp >= egg.requiredExp * 0.66 ? 2 : egg.currentExp >= egg.requiredExp * 0.33 ? 1 : 0
+    ? eggPct >= 0.66 ? 2 : eggPct >= 0.33 ? 1 : 0
     : 0;
   const frames = showEgg
     ? [EGG_FRAMES[Math.min(eggStage, EGG_FRAMES.length - 1)]]
@@ -83,7 +90,9 @@ export function PetHeroBar() {
         </Text>
         {showEgg ? (
           <Text style={{ color: palette.mute, fontSize: 12, marginTop: 2 }}>
-            {egg!.currentExp} / {egg!.requiredExp} EXP
+            {isLegacyEgg
+              ? `${egg!.currentExp} / ${egg!.requiredExp} EXP`
+              : `解放健力 ${Math.round(((egg as any).liberationPct ?? 0))}% · ${(egg as any).rarity ? '已定型' : '未抽蛋'}`}
           </Text>
         ) : (
           <Text style={{ color: palette.mute, fontSize: 12, marginTop: 2 }}>

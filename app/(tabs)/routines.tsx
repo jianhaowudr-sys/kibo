@@ -1,10 +1,13 @@
 import { View, Text, ScrollView, Pressable, RefreshControl, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useAppStore } from '@/stores/useAppStore';
 import * as repo from '@/db/repo';
 import * as haptic from '@/lib/haptic';
-import type { RoutineExercise, Exercise } from '@/db/schema';
+import { LONG_PRESS_MS } from '@/lib/gestures';
+import { TutorialTip } from '@/components/common/TutorialTip';
+import type { RoutineExercise, Exercise, Routine } from '@/db/schema';
 
 type RoutineDetail = {
   exercises: (RoutineExercise & { ex: Exercise })[];
@@ -17,6 +20,7 @@ export default function RoutinesScreen() {
   const routines = useAppStore((s) => s.routines);
   const exercises = useAppStore((s) => s.exercises);
   const refreshRoutines = useAppStore((s) => s.refreshRoutines);
+  const reorderRoutines = useAppStore((s) => s.reorderRoutines);
   const deleteRoutine = useAppStore((s) => s.deleteRoutine);
   const duplicateRoutine = useAppStore((s) => s.duplicateRoutine);
   const loadRoutineAsQueue = useAppStore((s) => s.loadRoutineAsQueue);
@@ -101,13 +105,80 @@ export default function RoutinesScreen() {
     router.push('/workout/active' as any);
   };
 
+  const onDragEnd = useCallback(
+    ({ data }: { data: Routine[] }) => {
+      haptic.tapLight();
+      reorderRoutines(data.map((r) => r.id));
+    },
+    [reorderRoutines],
+  );
+
+  const renderItem = useCallback(
+    ({ item: r, drag, isActive }: RenderItemParams<Routine>) => {
+      const d = details[r.id];
+      return (
+        <ScaleDecorator>
+          <Pressable
+            onLongPress={drag}
+            delayLongPress={LONG_PRESS_MS}
+            disabled={isActive}
+            className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-3"
+            style={{ opacity: isActive ? 0.7 : 1 }}
+          >
+            <View className="flex-row items-center gap-3 mb-3">
+              <Text className="text-3xl">{r.emoji}</Text>
+              <View className="flex-1">
+                <Text className="text-kibo-text font-bold text-base">{r.name}</Text>
+                {d ? (
+                  <Text className="text-kibo-mute text-xs mt-0.5">
+                    {d.exercises.length} 動作 · {d.totalSets} 組 · 約 {d.estMin} 分鐘
+                  </Text>
+                ) : (
+                  <Text className="text-kibo-mute text-xs mt-0.5">載入中...</Text>
+                )}
+                {r.note && (
+                  <Text className="text-kibo-mute text-xs mt-0.5" numberOfLines={1}>
+                    {r.note}
+                  </Text>
+                )}
+              </View>
+              <Pressable onPress={() => onOptions(r.id, r.name)} className="p-2">
+                <Text className="text-kibo-mute text-lg">⋯</Text>
+              </Pressable>
+            </View>
+
+            {d && d.exercises.length > 0 && (
+              <View className="flex-row flex-wrap gap-1 mb-3">
+                {d.exercises.slice(0, 6).map((re) => (
+                  <View key={re.id} className="bg-kibo-card rounded-full px-2 py-1 flex-row items-center gap-1">
+                    <Text className="text-xs">{re.ex.icon}</Text>
+                    <Text className="text-kibo-text text-[10px]">{re.ex.name}</Text>
+                  </View>
+                ))}
+                {d.exercises.length > 6 && (
+                  <View className="bg-kibo-card rounded-full px-2 py-1">
+                    <Text className="text-kibo-mute text-[10px]">+{d.exercises.length - 6}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            <Pressable
+              onPress={() => onStart(r.id)}
+              className="bg-kibo-primary rounded-xl py-3 active:opacity-70"
+            >
+              <Text className="text-kibo-bg text-center font-bold">開始訓練 →</Text>
+            </Pressable>
+          </Pressable>
+        </ScaleDecorator>
+      );
+    },
+    [details, onStart, onOptions],
+  );
+
   return (
     <View className="flex-1 bg-kibo-bg">
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22D3EE" />}
-      >
+      <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
         <View className="flex-row gap-2 mb-4">
           <Pressable
             onPress={onNewWorkout}
@@ -128,11 +199,21 @@ export default function RoutinesScreen() {
           </Pressable>
         </View>
 
-        <Text className="text-kibo-text text-lg font-bold mb-2">
-          📋 我的課表 {routines.length > 0 && `(${routines.length})`}
-        </Text>
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-kibo-text text-lg font-bold">
+            📋 我的課表 {routines.length > 0 && `(${routines.length})`}
+          </Text>
+          {routines.length > 1 && (
+            <Text className="text-kibo-mute text-xs">長按拖曳排序</Text>
+          )}
+        </View>
+      </View>
 
-        {routines.length === 0 && (
+      {routines.length === 0 ? (
+        <ScrollView
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22D3EE" />}
+        >
           <View className="bg-kibo-surface rounded-2xl p-8 border border-kibo-card items-center">
             <Text className="text-5xl mb-2">📋</Text>
             <Text className="text-kibo-text font-semibold">還沒有課表</Text>
@@ -149,68 +230,19 @@ export default function RoutinesScreen() {
               <Text className="text-kibo-bg font-bold">建立第一份課表</Text>
             </Pressable>
           </View>
-        )}
+        </ScrollView>
+      ) : (
+        <DraggableFlatList
+          data={routines}
+          keyExtractor={(item) => String(item.id)}
+          onDragEnd={onDragEnd}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22D3EE" />}
+        />
+      )}
 
-        <View className="gap-3">
-          {routines.map((r) => {
-            const d = details[r.id];
-            return (
-              <View
-                key={r.id}
-                className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card"
-              >
-                <View className="flex-row items-center gap-3 mb-3">
-                  <Text className="text-3xl">{r.emoji}</Text>
-                  <View className="flex-1">
-                    <Text className="text-kibo-text font-bold text-base">{r.name}</Text>
-                    {d ? (
-                      <Text className="text-kibo-mute text-xs mt-0.5">
-                        {d.exercises.length} 動作 · {d.totalSets} 組 · 約 {d.estMin} 分鐘
-                      </Text>
-                    ) : (
-                      <Text className="text-kibo-mute text-xs mt-0.5">載入中...</Text>
-                    )}
-                    {r.note && (
-                      <Text className="text-kibo-mute text-xs mt-0.5" numberOfLines={1}>
-                        {r.note}
-                      </Text>
-                    )}
-                  </View>
-                  <Pressable
-                    onPress={() => onOptions(r.id, r.name)}
-                    className="p-2"
-                  >
-                    <Text className="text-kibo-mute text-lg">⋯</Text>
-                  </Pressable>
-                </View>
-
-                {d && d.exercises.length > 0 && (
-                  <View className="flex-row flex-wrap gap-1 mb-3">
-                    {d.exercises.slice(0, 6).map((re) => (
-                      <View key={re.id} className="bg-kibo-card rounded-full px-2 py-1 flex-row items-center gap-1">
-                        <Text className="text-xs">{re.ex.icon}</Text>
-                        <Text className="text-kibo-text text-[10px]">{re.ex.name}</Text>
-                      </View>
-                    ))}
-                    {d.exercises.length > 6 && (
-                      <View className="bg-kibo-card rounded-full px-2 py-1">
-                        <Text className="text-kibo-mute text-[10px]">+{d.exercises.length - 6}</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                <Pressable
-                  onPress={() => onStart(r.id)}
-                  className="bg-kibo-primary rounded-xl py-3 active:opacity-70"
-                >
-                  <Text className="text-kibo-bg text-center font-bold">開始訓練 →</Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
+      <TutorialTip id="routine-list-drag" delay={1200} />
     </View>
   );
 }

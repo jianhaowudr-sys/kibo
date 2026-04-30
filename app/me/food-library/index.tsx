@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { SwipeableRow } from '@/components/common/SwipeableRow';
 import * as haptic from '@/lib/haptic';
+import { resolvePhotoUri } from '@/lib/photo_storage';
 
 export default function FoodLibraryList() {
   const palette = useThemePalette();
@@ -92,11 +93,14 @@ export default function FoodLibraryList() {
                 borderWidth: 1, borderColor: palette.card,
               }}
             >
-              {item.photoUri ? (
-                <Image source={{ uri: item.photoUri }} style={{ width: 44, height: 44, borderRadius: 8, marginRight: 12 }} />
-              ) : (
-                <Text style={{ fontSize: 32, marginRight: 12 }}>{item.emoji}</Text>
-              )}
+              {(() => {
+                const uri = resolvePhotoUri(item.photoUri);
+                return uri ? (
+                  <Image source={{ uri }} style={{ width: 44, height: 44, borderRadius: 8, marginRight: 12 }} />
+                ) : (
+                  <Text style={{ fontSize: 32, marginRight: 12 }}>{item.emoji}</Text>
+                );
+              })()}
               <View style={{ flex: 1 }}>
                 <Text style={{ color: palette.text, fontWeight: '700' }}>{item.name}</Text>
                 <Text style={{ color: palette.mute, fontSize: 11 }}>

@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { useAppStore } from '@/stores/useAppStore';
 import * as haptic from '@/lib/haptic';
 import { useThemePalette } from '@/lib/useThemePalette';
+import { EggSprite } from '@/components/pet/EggSprite';
+import { getSkinById, RARITY_LABEL, RARITY_COLOR } from '@/data/egg_skins';
 
 export default function HatchScreen() {
   const palette = useThemePalette();
@@ -70,43 +72,63 @@ export default function HatchScreen() {
     outputRange: [-10, 10],
   });
 
+  const skin = getSkinById(pending.skinId);
+  const isLegacy = !!pending.isLegacy;
+  const rarityLabel = pending.rarity ? RARITY_LABEL[pending.rarity] : null;
+  const rarityColor = pending.rarity ? RARITY_COLOR[pending.rarity] : palette.primary;
+
   return (
     <View className="flex-1 bg-kibo-bg items-center justify-center p-6">
       {stage !== 'naming' && (
         <>
           <Text className="text-kibo-mute text-sm mb-6">✨ 蛋要孵化了 ✨</Text>
-          <Animated.Text
-            style={{
-              fontSize: 160,
-              transform: [{ translateX }, { scale }],
-              opacity,
-            }}
-          >
-            🥚
-          </Animated.Text>
+          <Animated.View style={{ transform: [{ translateX }, { scale }], opacity }}>
+            {skin && !isLegacy ? (
+              <EggSprite skinId={skin.id} stage={3} size={180} />
+            ) : (
+              <Text style={{ fontSize: 160 }}>🥚</Text>
+            )}
+          </Animated.View>
           {stage === 'cracking' && (
             <Text className="text-kibo-accent text-2xl font-bold mt-4 animate-pulse">
               CRACK! ⚡
             </Text>
           )}
           {stage === 'hatched' && (
-            <Text className="text-9xl mt-2">{pending.emoji}</Text>
+            <View style={{ alignItems: 'center', marginTop: 8 }}>
+              {skin && !isLegacy ? (
+                <EggSprite skinId={skin.id} stage={4} size={180} />
+              ) : (
+                <Text style={{ fontSize: 140 }}>{pending.emoji}</Text>
+              )}
+            </View>
           )}
         </>
       )}
 
       {stage === 'naming' && (
         <>
-          <Text className="text-kibo-accent text-sm mb-2">🎉 恭喜孵化</Text>
-          <Text className="text-9xl mb-4">{pending.emoji}</Text>
-          <Text className="text-kibo-text text-2xl font-bold mb-6">{pending.petName}</Text>
+          <Text style={{ color: rarityColor, fontSize: 14, fontWeight: '700', marginBottom: 8 }}>
+            🎉 恭喜孵化{rarityLabel ? ` · ${rarityLabel}` : ''}
+          </Text>
+          {skin && !isLegacy ? (
+            <EggSprite skinId={skin.id} stage={4} size={180} />
+          ) : (
+            <Text style={{ fontSize: 140 }}>{pending.emoji}</Text>
+          )}
+          <Text className="text-kibo-text text-2xl font-bold mt-4 mb-2">
+            {skin?.label ?? pending.petName}
+          </Text>
+          {skin?.description && (
+            <Text className="text-kibo-mute text-xs text-center mb-6 px-6">{skin.description}</Text>
+          )}
 
           <View className="w-full max-w-sm">
             <Text className="text-kibo-mute text-xs mb-2">給牠取個名字吧：</Text>
             <TextInput
               value={petName}
               onChangeText={setPetName}
-              placeholder={pending.petName}
+              placeholder={skin?.label ?? pending.petName}
               placeholderTextColor={palette.placeholder}
               maxLength={12}
               className="bg-kibo-surface text-kibo-text rounded-xl px-4 py-3 mb-4 border border-kibo-card text-center text-lg"

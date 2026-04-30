@@ -13,6 +13,7 @@ export type DashboardCardId =
   | 'health-sleep'
   | 'health-period'
   | 'today-workouts'
+  | 'start-workout-button'
   | 'today-meals'
   | 'pet-message'
   | 'body-summary'
@@ -41,10 +42,11 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
     { id: 'health-period', visible: false, order: 6, size: 'compact' },
     { id: 'pet-message', visible: false, order: 7, size: 'full' },  // 預設關，第 1~7 天通常無訊息
     { id: 'today-workouts', visible: true, order: 8, size: 'full' },
-    { id: 'today-meals', visible: false, order: 9, size: 'full' },
-    { id: 'body-summary', visible: false, order: 10, size: 'compact' },
-    { id: 'nutrition-summary', visible: false, order: 11, size: 'compact' },
-    { id: 'pet', visible: false, order: 12, size: 'full' },
+    { id: 'start-workout-button', visible: true, order: 9, size: 'full' },
+    { id: 'today-meals', visible: false, order: 10, size: 'full' },
+    { id: 'body-summary', visible: false, order: 11, size: 'compact' },
+    { id: 'nutrition-summary', visible: false, order: 12, size: 'compact' },
+    { id: 'pet', visible: false, order: 13, size: 'full' },
   ],
 };
 
@@ -59,6 +61,7 @@ export const CARD_LABELS: Record<DashboardCardId, string> = {
   'health-period': '🌸 經期',
   'pet-message': '💬 寵物訊息',
   'today-workouts': '💪 今日訓練',
+  'start-workout-button': '▶️ 開始訓練按鈕',
   'today-meals': '🍱 今日飲食',
   'body-summary': '🏋️ 體態快覽',
   'nutrition-summary': '🥗 飲食快覽',

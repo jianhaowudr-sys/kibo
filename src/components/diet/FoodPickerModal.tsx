@@ -3,6 +3,7 @@ import { View, Text, Pressable, Modal, TextInput, FlatList, Image } from 'react-
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as haptic from '@/lib/haptic';
+import { resolvePhotoUri } from '@/lib/photo_storage';
 import type { CustomFood, MealItem } from '@/db/schema';
 
 type Props = {
@@ -100,11 +101,14 @@ export function FoodPickerModal({ visible, onClose, onPick }: Props) {
                       borderWidth: 1, borderColor: palette.card,
                     }}
                   >
-                    {item.photoUri ? (
-                      <Image source={{ uri: item.photoUri }} style={{ width: 36, height: 36, borderRadius: 6, marginRight: 10 }} />
-                    ) : (
-                      <Text style={{ fontSize: 28, marginRight: 10 }}>{item.emoji}</Text>
-                    )}
+                    {(() => {
+                      const uri = resolvePhotoUri(item.photoUri);
+                      return uri ? (
+                        <Image source={{ uri }} style={{ width: 36, height: 36, borderRadius: 6, marginRight: 10 }} />
+                      ) : (
+                        <Text style={{ fontSize: 28, marginRight: 10 }}>{item.emoji}</Text>
+                      );
+                    })()}
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: palette.text, fontWeight: '600' }}>{item.name}</Text>
                       <Text style={{ color: palette.mute, fontSize: 11 }}>
