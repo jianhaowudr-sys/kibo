@@ -8,7 +8,7 @@ const { withDangerousMod } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
-const TOKEN = 'CEUAD6UKPYG4GAAAAAAAAAAAAAAAA';
+const TOKEN = 'CEUAD6UKPYG4GAAAAAAAAAAA\n';
 
 const withGooglePlayToken = (config) => {
   return withDangerousMod(config, [
