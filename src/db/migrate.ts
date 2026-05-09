@@ -413,6 +413,51 @@ async function runAdditions(): Promise<void> {
   await sqliteDb.runAsync(
     'CREATE INDEX IF NOT EXISTS idx_progress_user_angle_at ON progress_photos(user_id, angle, captured_at DESC)',
   );
+
+  // v1.0.4: 主睡跨午夜歸日改用 cutoff 邏輯（取代 mid-point）
+  // 一次性 backfill：column 當 sentinel，存在後不再跑
+  if (!(await hasColumn('users', 'sleep_dkv2_at'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN sleep_dkv2_at INTEGER');
+    const users = await sqliteDb.getAllAsync<{ id: number; health_settings: string | null }>(
+      'SELECT id, health_settings FROM users',
+    );
+    for (const u of users) {
+      let cutoffHour = 4;
+      if (u.health_settings) {
+        try {
+          const hs = JSON.parse(u.health_settings);
+          if (typeof hs?.sleep?.crossNightCutoffHour === 'number') {
+            cutoffHour = hs.sleep.crossNightCutoffHour;
+          }
+        } catch {}
+      }
+      const sleeps = await sqliteDb.getAllAsync<{ id: number; bedtime_at: number; wake_at: number; assigned_day_key: string | null }>(
+        `SELECT id, bedtime_at, wake_at, assigned_day_key FROM sleep_logs WHERE user_id = ? AND kind = 'main'`,
+        [u.id],
+      );
+      for (const s of sleeps) {
+        const bed = new Date(s.bedtime_at);
+        const ref = new Date(s.bedtime_at);
+        if (bed.getHours() < cutoffHour) {
+          ref.setDate(ref.getDate() - 1);  // 走 calendar 而非 ms，DST 安全
+        }
+        const y = ref.getFullYear();
+        const m = String(ref.getMonth() + 1).padStart(2, '0');
+        const dd = String(ref.getDate()).padStart(2, '0');
+        const newKey = `${y}-${m}-${dd}`;
+        if (newKey !== s.assigned_day_key) {
+          await sqliteDb.runAsync(
+            `UPDATE sleep_logs SET assigned_day_key = ? WHERE id = ?`,
+            [newKey, s.id],
+          );
+        }
+      }
+      await sqliteDb.runAsync(
+        `UPDATE users SET sleep_dkv2_at = ? WHERE id = ?`,
+        [Date.now(), u.id],
+      );
+    }
+  }
 }
 
 async function seedV2IfNeeded(): Promise<void> {
