@@ -272,6 +272,18 @@ CREATE TABLE IF NOT EXISTS pending_deletions (
   enqueued_at INTEGER NOT NULL,
   UNIQUE(table_name, local_id)
 );
+
+CREATE TABLE IF NOT EXISTS progress_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  captured_at INTEGER NOT NULL,
+  angle TEXT NOT NULL,
+  photo_uri TEXT NOT NULL,
+  weight_kg REAL,
+  body_fat_pct REAL,
+  note TEXT,
+  created_at INTEGER NOT NULL
+);
 `;
 
 async function hasColumn(table: string, column: string): Promise<boolean> {
@@ -392,6 +404,14 @@ async function runAdditions(): Promise<void> {
   // daily_scores 表：CREATE TABLE IF NOT EXISTS 已在 SCHEMA_SQL 處理，這裡確保 index 存在
   await sqliteDb.runAsync(
     'CREATE INDEX IF NOT EXISTS idx_daily_scores_user_day ON daily_scores(user_id, day_key)',
+  );
+
+  // v1.0.3: progress_photos 表索引
+  await sqliteDb.runAsync(
+    'CREATE INDEX IF NOT EXISTS idx_progress_user_at ON progress_photos(user_id, captured_at DESC)',
+  );
+  await sqliteDb.runAsync(
+    'CREATE INDEX IF NOT EXISTS idx_progress_user_angle_at ON progress_photos(user_id, angle, captured_at DESC)',
   );
 }
 
