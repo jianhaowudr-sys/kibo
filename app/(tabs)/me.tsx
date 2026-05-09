@@ -946,6 +946,24 @@ export default function MeScreen() {
               </View>
             )}
 
+            {/* ── 第一列：📊 體態量測 + 📸 進度照 並排 ── */}
+            <View className="flex-row gap-3 mb-2">
+              <Pressable
+                onPress={() => { haptic.tapLight(); router.push('/body' as any); }}
+                className="flex-1 bg-kibo-surface rounded-2xl p-4 border border-kibo-card items-center"
+              >
+                <Text className="text-2xl mb-1">📊</Text>
+                <Text className="text-kibo-text font-semibold text-xs">體態量測</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => { haptic.tapLight(); router.push('/progress' as any); }}
+                className="flex-1 bg-kibo-surface rounded-2xl p-4 border border-kibo-card items-center"
+              >
+                <Text className="text-2xl mb-1">📸</Text>
+                <Text className="text-kibo-text font-semibold text-xs">進度照</Text>
+              </Pressable>
+            </View>
+
             {/* ── 第二列：💌 意見回饋 + ☕ 贊助作者 並排 ── */}
             <View className="flex-row gap-3 mb-2">
               <Pressable
