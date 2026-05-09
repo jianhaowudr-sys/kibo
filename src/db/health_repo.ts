@@ -233,15 +233,26 @@ function dayKeyFromTs(ts: number): string {
 }
 
 /**
- * 主睡的歸日：用「睡眠中點」決定，比起 wakeAt 更能正確處理夜班/早上睡晚上起。
+ * 主睡的歸日：用「凌晨 cutoff」決定，符合「昨晚熬夜到凌晨」的直覺。
  *
- * - 23:30 → 06:30：中點 03:00 → 起床日 ✓
- * - 04:00 → 12:00：中點 08:00 → 起床日 ✓（白天主睡）
- * - 07:00 (早) → 19:00 (晚)：中點 13:00 → 同一天（夜班正確）
+ * 規則：上床 hour < cutoffHour → 算前一天的睡眠延伸；否則算上床當天。
+ *
+ * 範例（cutoffHour = 4）：
+ * - 11/9 23:00 → 11/10 07:00：bed hour 23 ≥ 4 → 11/9（昨晚的覺）
+ * - 11/10 02:00 → 11/10 09:00：bed hour 02 < 4 → 11/9（熬夜延伸）
+ * - 11/10 04:30 → 11/10 12:00：bed hour 04 ≥ 4 → 11/10（補睡）
+ * - 11/10 22:00 → 11/11 06:00：bed hour 22 ≥ 4 → 11/10（晚的覺）
+ *
+ * cutoffHour 從 healthSettings.sleep.crossNightCutoffHour 來，預設 4。
  */
-function assignedDayKeyForMain(bedtimeAt: number, wakeAt: number): string {
-  const mid = Math.round((bedtimeAt + wakeAt) / 2);
-  return dayKeyFromTs(mid);
+function assignedDayKeyForMain(bedtimeAt: number, wakeAt: number, cutoffHour: number): string {
+  const bed = new Date(bedtimeAt);
+  if (bed.getHours() < cutoffHour) {
+    const prev = new Date(bedtimeAt);
+    prev.setDate(prev.getDate() - 1);
+    return dayKeyFromTs(prev.getTime());
+  }
+  return dayKeyFromTs(bedtimeAt);
 }
 
 /**
@@ -252,8 +263,10 @@ export async function upsertSleep(data: {
   userId: number; bedtimeAt: number; wakeAt: number;
   quality?: number;
   forceNew?: boolean;
+  cutoffHour?: number;
 }): Promise<number> {
-  const adk = assignedDayKeyForMain(data.bedtimeAt, data.wakeAt);
+  const cutoff = data.cutoffHour ?? 4;
+  const adk = assignedDayKeyForMain(data.bedtimeAt, data.wakeAt, cutoff);
   const durationMin = Math.max(0, Math.round((data.wakeAt - data.bedtimeAt) / 60000));
   if (!data.forceNew) {
     const existing = await sqliteDb.getFirstAsync<{ id: number }>(
@@ -330,6 +343,34 @@ export async function getSleepByDay(userId: number, dayKey: string): Promise<Sle
     [userId, dayKey],
   );
   return r ? ROW2SLEEP(r) : null;
+}
+
+/**
+ * 用新的 cutoff 邏輯重算指定 user 所有主睡的 assigned_day_key。
+ * 用在：(a) v1.0.4 一次性 migration、(b) 使用者改 cutoff 後重算過去資料。
+ *
+ * 回傳更新筆數。
+ */
+export async function recomputeMainSleepAssignedDayKeys(
+  userId: number,
+  cutoffHour: number,
+): Promise<number> {
+  const rows = await sqliteDb.getAllAsync<{ id: number; bedtime_at: number; wake_at: number; assigned_day_key: string | null }>(
+    `SELECT id, bedtime_at, wake_at, assigned_day_key FROM sleep_logs WHERE user_id = ? AND kind = 'main'`,
+    [userId],
+  );
+  let updated = 0;
+  for (const r of rows) {
+    const newKey = assignedDayKeyForMain(r.bedtime_at, r.wake_at, cutoffHour);
+    if (newKey !== r.assigned_day_key) {
+      await sqliteDb.runAsync(
+        `UPDATE sleep_logs SET assigned_day_key = ? WHERE id = ?`,
+        [newKey, r.id],
+      );
+      updated += 1;
+    }
+  }
+  return updated;
 }
 
 export async function listSleepRecent(userId: number, days: number): Promise<SleepLog[]> {
