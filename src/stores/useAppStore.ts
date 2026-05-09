@@ -185,6 +185,8 @@ type Actions = {
   upsertBowel: (id: number, patch: { bristol?: number; hasBlood?: number; hasPain?: number; notes?: string }) => Promise<void>;
   upsertSleep: (data: { bedtimeAt: number; wakeAt: number; quality?: number; forceNew?: boolean }) => Promise<void>;
   addNap: (data: { bedtimeAt: number; wakeAt: number; quality?: number }) => Promise<void>;
+  /** 重算所有主睡的 assigned_day_key — 設定 cutoff 改值或使用者主動觸發。回傳更新筆數。 */
+  recomputeSleepDayKeys: () => Promise<number>;
   awardLiberation: (source: ScoreSource, opts?: {
     sourceId?: number | null;
     basePoints?: number;
@@ -990,10 +992,20 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   upsertSleep: async (data) => {
     const u = get().user;
     if (!u) return;
-    const id = await healthRepo.upsertSleep({ userId: u.id, ...data });
+    const cutoffHour = get().healthSettings.sleep.crossNightCutoffHour;
+    const id = await healthRepo.upsertSleep({ userId: u.id, cutoffHour, ...data });
     await get().refreshHealth();
     await get().awardLiberation('sleep', { sourceId: id });
     get().enqueueSync?.();
+  },
+
+  recomputeSleepDayKeys: async () => {
+    const u = get().user;
+    if (!u) return 0;
+    const cutoffHour = get().healthSettings.sleep.crossNightCutoffHour;
+    const updated = await healthRepo.recomputeMainSleepAssignedDayKeys(u.id, cutoffHour);
+    await get().refreshHealth();
+    return updated;
   },
 
   addNap: async (data) => {
