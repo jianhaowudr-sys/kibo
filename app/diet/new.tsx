@@ -1,7 +1,7 @@
-import { View, Text, ScrollView, Pressable, TextInput, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Alert, Image, ActivityIndicator, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
@@ -12,6 +12,9 @@ import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import { useLowPower } from '@/hooks/useLowPower';
 import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
+import { WheelPicker } from '@/components/common/WheelPicker';
+import { dateKey as toDateKey } from '@/lib/date';
+import { format } from 'date-fns';
 import type { MealType, MealItem } from '@/db/schema';
 
 type PhotoSlot = { uri: string; base64: string; takenAt: number | null };
@@ -32,14 +35,116 @@ function guessMealType(): MealType {
   return 'snack';
 }
 
+// 各餐型的標準時間（用於記錄過去日期時的 loggedAt 預設）
+const MEAL_STD_HM: Record<MealType, [number, number]> = {
+  breakfast: [8, 0],
+  lunch: [12, 0],
+  dinner: [18, 30],
+  snack: [15, 30],
+};
+
+function buildInitialLoggedAt(initDateKey: string | undefined, mealType: MealType): Date {
+  const now = new Date();
+  if (!initDateKey || initDateKey === toDateKey(now)) {
+    return now; // 今天 → 現在這個小時
+  }
+  // 過去日期 → 該日的餐型標準時間
+  const [y, m, d] = initDateKey.split('-').map(Number);
+  const [hh, mm] = MEAL_STD_HM[mealType];
+  return new Date(y, (m ?? 1) - 1, d ?? 1, hh, mm, 0);
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINS = Array.from({ length: 12 }, (_, i) => i * 5);
+
+function TimePickerModal({
+  visible,
+  value,
+  onSave,
+  onClose,
+}: {
+  visible: boolean;
+  value: Date;
+  onSave: (d: Date) => void;
+  onClose: () => void;
+}) {
+  const [h, setH] = useState(value.getHours());
+  const [m, setM] = useState(Math.round(value.getMinutes() / 5) * 5 % 60);
+
+  useEffect(() => {
+    if (visible) {
+      setH(value.getHours());
+      setM(Math.round(value.getMinutes() / 5) * 5 % 60);
+    }
+  }, [visible, value]);
+
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+        <View className="bg-kibo-bg rounded-t-3xl p-4">
+          <View className="flex-row items-center mb-3">
+            <Text className="text-kibo-text text-base font-bold flex-1">調整記錄時間</Text>
+            <Pressable onPress={onClose} hitSlop={8}>
+              <Text className="text-kibo-mute text-2xl">✕</Text>
+            </Pressable>
+          </View>
+          <Text className="text-kibo-mute text-xs mb-2">日期：{format(value, 'yyyy/MM/dd')}</Text>
+          <View className="flex-row items-center justify-center gap-1 my-3">
+            <WheelPicker
+              values={HOURS}
+              value={h}
+              onChange={(v) => setH(v as number)}
+              formatLabel={(v) => String(v).padStart(2, '0')}
+              width={70}
+              itemHeight={36}
+              visibleCount={3}
+            />
+            <Text className="text-kibo-text text-2xl font-bold">:</Text>
+            <WheelPicker
+              values={MINS}
+              value={m}
+              onChange={(v) => setM(v as number)}
+              formatLabel={(v) => String(v).padStart(2, '0')}
+              width={70}
+              itemHeight={36}
+              visibleCount={3}
+            />
+          </View>
+          <Pressable
+            onPress={() => {
+              const next = new Date(value);
+              next.setHours(h, m, 0, 0);
+              onSave(next);
+            }}
+            className="bg-kibo-primary rounded-2xl py-4 mt-2"
+          >
+            <Text className="text-kibo-bg text-center font-bold">確認</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function NewMeal() {
   const palette = useThemePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { type: initType } = useLocalSearchParams<{ type?: MealType }>();
+  const { type: initType, dateKey: initDateKey } = useLocalSearchParams<{ type?: MealType; dateKey?: string }>();
   const addMeal = useAppStore((s) => s.addMeal);
 
   const [mealType, setMealType] = useState<MealType>(initType ?? guessMealType());
+  // 記錄到的時間。預設：今天 = 現在；過去日期 = 該日餐型標準時間。
+  const [loggedAt, setLoggedAt] = useState<Date>(() => buildInitialLoggedAt(initDateKey, initType ?? guessMealType()));
+  const [userTouchedTime, setUserTouchedTime] = useState(false);
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const isPastDate = !!initDateKey && initDateKey !== toDateKey(new Date());
+
+  // mealType 切換時自動同步 loggedAt 為該餐型標準時間（除非使用者已手動調過時間）
+  useEffect(() => {
+    if (userTouchedTime) return;
+    setLoggedAt(buildInitialLoggedAt(initDateKey, mealType));
+  }, [mealType, initDateKey, userTouchedTime]);
   const [title, setTitle] = useState('');
   const [items, setItems] = useState<MealItem[]>([]);
   const [calories, setCalories] = useState('');
@@ -257,7 +362,7 @@ export default function NewMeal() {
         for (let i = 0; i < photos.length; i++) {
           const r = perPhotoReadings[i];
           await addMeal({
-            loggedAt: new Date() as any,
+            loggedAt: loggedAt as any,
             mealType,
             title: r.title || null,
             itemsJson: r.items.length > 0 ? JSON.stringify(r.items) : null,
@@ -322,6 +427,17 @@ export default function NewMeal() {
             </Pressable>
           ))}
         </View>
+
+        <Pressable
+          onPress={() => { haptic.tapLight(); setTimePickerOpen(true); }}
+          className={`flex-row items-center justify-between mb-4 px-4 py-3 rounded-2xl border ${isPastDate ? 'bg-kibo-warning/15 border-kibo-warning' : 'bg-kibo-surface border-kibo-card'}`}
+        >
+          <Text className="text-kibo-mute text-xs">記錄到</Text>
+          <Text className={`text-sm font-bold ${isPastDate ? 'text-kibo-warning' : 'text-kibo-text'}`}>
+            {format(loggedAt, 'yyyy/MM/dd HH:mm')} {isPastDate && '（補登記）'}
+          </Text>
+          <Text className="text-kibo-mute text-xs">⏰ 調</Text>
+        </Pressable>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Text className="text-kibo-mute text-xs">食物照片 ({photos.length}/{MAX_PHOTOS})</Text>
@@ -621,6 +737,17 @@ export default function NewMeal() {
           <Text className="text-kibo-bg text-center font-bold text-lg">儲存</Text>
         </Pressable>
       </View>
+
+      <TimePickerModal
+        visible={timePickerOpen}
+        onClose={() => setTimePickerOpen(false)}
+        value={loggedAt}
+        onSave={(d) => {
+          setLoggedAt(d);
+          setUserTouchedTime(true);
+          setTimePickerOpen(false);
+        }}
+      />
     </View>
   );
 }
