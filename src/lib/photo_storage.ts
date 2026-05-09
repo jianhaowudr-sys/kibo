@@ -9,7 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 const DOC_DIR = FileSystem.documentDirectory ?? '';
 const PHOTOS_ROOT = `${DOC_DIR}photos/`;
 
-export type PhotoTable = 'meals' | 'body' | 'food_library';
+export type PhotoTable = 'meals' | 'body' | 'food_library' | 'progress';
 
 async function ensureDir(dir: string): Promise<void> {
   try {
