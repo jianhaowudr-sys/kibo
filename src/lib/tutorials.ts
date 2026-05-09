@@ -210,6 +210,20 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'home',
     icon: '🥚',
   },
+  'progress-capture-onion-skin': {
+    id: 'progress-capture-onion-skin',
+    title: '對齊上一張',
+    body: '同角度的上一張會 30% 透明疊上，站位對齊它再按拍攝。系統會自動裁切成 3:4，動畫播放才不會跳。',
+    scope: 'progress-capture',
+    icon: '👻',
+  },
+  'progress-timeline-play': {
+    id: 'progress-timeline-play',
+    title: '播放體態變化',
+    body: '至少 2 張同角度照片才能播放。每張顯示 0.6 秒切換，看自己累積多久變了多少。',
+    scope: 'progress',
+    icon: '▶',
+  },
 };
 
 /** 取某 scope 下的全部 tip（給 ❓ icon 重看用） */
