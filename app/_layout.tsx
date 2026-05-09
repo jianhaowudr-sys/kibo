@@ -139,6 +139,10 @@ export default function RootLayout() {
           <Stack.Screen name="body/index" options={{ title: 'InBody 紀錄' }} />
           <Stack.Screen name="body/new" options={{ title: '新增 InBody', presentation: 'modal' }} />
           <Stack.Screen name="body/[id]" options={{ title: '紀錄詳情' }} />
+          <Stack.Screen name="progress/index" options={{ title: '進度照' }} />
+          <Stack.Screen name="progress/angle-picker" options={{ title: '選擇角度', presentation: 'modal' }} />
+          <Stack.Screen name="progress/capture" options={{ headerShown: false, animation: 'fade' }} />
+          <Stack.Screen name="progress/confirm" options={{ title: '確認', presentation: 'modal' }} />
           <Stack.Screen name="diet/new" options={{ title: '記錄一餐', presentation: 'modal' }} />
           <Stack.Screen name="diet/[id]" options={{ title: '飲食詳情' }} />
           <Stack.Screen name="diet/edit/[id]" options={{ title: '編輯飲食', presentation: 'modal' }} />
