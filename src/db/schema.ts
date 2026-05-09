@@ -78,6 +78,18 @@ export const bodyMeasurements = sqliteTable('body_measurements', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+export const progressPhotos = sqliteTable('progress_photos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  capturedAt: integer('captured_at', { mode: 'timestamp_ms' }).notNull(),
+  angle: text('angle').notNull(),                  // 'front' | 'side' | 'back'
+  photoUri: text('photo_uri').notNull(),           // relative "photos/progress/xxx.jpg"
+  weightKg: real('weight_kg'),                     // snapshot from latest body_measurements at save time
+  bodyFatPct: real('body_fat_pct'),                // snapshot
+  note: text('note'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
 export const routineExercises = sqliteTable('routine_exercises', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   routineId: integer('routine_id').notNull().references(() => routines.id, { onDelete: 'cascade' }),
@@ -344,6 +356,9 @@ export type TrinityCompletion = typeof trinityCompletions.$inferSelect;
 export type NewTrinityCompletion = typeof trinityCompletions.$inferInsert;
 export type DailyScore = typeof dailyScores.$inferSelect;
 export type NewDailyScore = typeof dailyScores.$inferInsert;
+export type ProgressPhoto = typeof progressPhotos.$inferSelect;
+export type NewProgressPhoto = typeof progressPhotos.$inferInsert;
+export type ProgressAngle = 'front' | 'side' | 'back';
 export type EggRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'legacy';
 export type ScoreSource = 'meal' | 'workout' | 'sleep' | 'body' | 'water' | 'bowel' | 'nap' | 'streak';
 
