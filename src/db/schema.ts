@@ -223,8 +223,10 @@ export const sleepLogs = sqliteTable('sleep_logs', {
   quality: integer('quality').notNull().default(3),     // 1~5
   // 起床日期 yyyy-mm-dd（保留原欄位，舊版相容）
   dayKey: text('day_key').notNull(),
-  // v1.0.2 片段模型：
-  // - 'main' 主睡：assignedDayKey 用「(bedtimeAt + wakeAt) / 2」中點 dayKey；同天可有多筆（分段睡）
+  // 片段模型（kind 標記主睡 vs 小睡，assignedDayKey 為歸屬日）：
+  // - 'main' 主睡：assignedDayKey 用 cutoff 邏輯（v1.0.4+，取代 v1.0.2 mid-point）
+  //   bedtime hour < healthSettings.sleep.crossNightCutoffHour（預設 4）→ 算前一天延伸
+  //   否則算上床當天。同天可有多筆（分段睡）。
   // - 'nap'  小睡：assignedDayKey 用 bedtimeAt dayKey；不影響主睡統計
   kind: text('kind').notNull().default('main'),
   assignedDayKey: text('assigned_day_key'),
