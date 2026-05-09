@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Switch, TextInput } from 'react-native';
+import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { WheelPicker } from '@/components/common/WheelPicker';
@@ -17,6 +17,30 @@ export default function HealthSettings() {
   const palette = useThemePalette();
   const settings = useAppStore((s) => s.healthSettings);
   const update = useAppStore((s) => s.updateHealthSettings);
+  const recomputeSleepDayKeys = useAppStore((s) => s.recomputeSleepDayKeys);
+
+  const onChangeCutoff = (v: number) => {
+    haptic.tapLight();
+    const prev = settings.sleep.crossNightCutoffHour;
+    if (v === prev) return;
+    update({ sleep: { ...settings.sleep, crossNightCutoffHour: v } });
+    Alert.alert(
+      '要重算過去的睡眠歸日嗎？',
+      `已把跨夜分日點改成凌晨 ${v}:00。要不要用新規則重算所有過去主睡的歸屬日期？`,
+      [
+        { text: '稍後', style: 'cancel' },
+        {
+          text: '重算',
+          onPress: async () => {
+            haptic.tapMedium();
+            const updated = await recomputeSleepDayKeys();
+            haptic.success();
+            Alert.alert('已重算', `更新了 ${updated} 筆主睡紀錄。`);
+          },
+        },
+      ],
+    );
+  };
 
   const [waterOpen, setWaterOpen] = useState(true);
   const [bowelOpen, setBowelOpen] = useState(false);
@@ -187,6 +211,32 @@ export default function HealthSettings() {
           value={settings.sleep.reminder.enabled}
           onChange={(v: boolean) => update({ sleep: { ...settings.sleep, reminder: { ...settings.sleep.reminder, enabled: v } } })}
         />
+        <View style={{ paddingVertical: 8 }}>
+          <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>跨夜分日點</Text>
+          <Text style={{ color: palette.mute, fontSize: 11, lineHeight: 16, marginBottom: 6 }}>
+            上床時間早於這個小時 → 算前一天的睡眠延伸（熬夜）。預設 4:00。
+            {'\n'}例：cutoff = 4 時，「11/10 02:00 上床」算 11/9；「11/10 04:30 上床」算 11/10。
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingRight: 8 }}>
+            {Array.from({ length: 13 }, (_, i) => i).map((h) => {
+              const active = settings.sleep.crossNightCutoffHour === h;
+              return (
+                <Pressable
+                  key={h}
+                  onPress={() => onChangeCutoff(h)}
+                  style={{
+                    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14,
+                    backgroundColor: active ? palette.primary : palette.card,
+                  }}
+                >
+                  <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>
+                    {String(h).padStart(2, '0')}:00
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       </Section>
 
       <Section title="🌸 月經週期" open={periodOpen} onToggle={() => setPeriodOpen(!periodOpen)}>
