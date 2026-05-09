@@ -130,7 +130,7 @@ export default function NewMeal() {
   const palette = useThemePalette();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { type: initType, dateKey: initDateKey } = useLocalSearchParams<{ type?: MealType; dateKey?: string }>();
+  const { type: initType, dateKey: initDateKey, quick: initQuick } = useLocalSearchParams<{ type?: MealType; dateKey?: string; quick?: string }>();
   const addMeal = useAppStore((s) => s.addMeal);
 
   const [mealType, setMealType] = useState<MealType>(initType ?? guessMealType());
@@ -145,6 +145,11 @@ export default function NewMeal() {
     if (userTouchedTime) return;
     setLoggedAt(buildInitialLoggedAt(initDateKey, mealType));
   }, [mealType, initDateKey, userTouchedTime]);
+
+  // quick=1 → 自動展開食物庫（首頁速記入口）
+  useEffect(() => {
+    if (initQuick === '1') setPickerOpen(true);
+  }, [initQuick]);
   const [title, setTitle] = useState('');
   const [items, setItems] = useState<MealItem[]>([]);
   const [calories, setCalories] = useState('');

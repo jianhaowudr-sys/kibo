@@ -92,11 +92,11 @@ export default function RoutinesScreen() {
   };
 
   const onOptions = (routineId: number, name: string) => {
-    Alert.alert(name, '選擇動作', [
+    Alert.alert(`📋 ${name}`, '長按卡片可拖曳排序', [
       { text: '取消', style: 'cancel' },
-      { text: '編輯', onPress: () => router.push({ pathname: '/routine/[id]' as any, params: { id: String(routineId) } }) },
-      { text: '複製', onPress: () => onDuplicate(routineId, name) },
-      { text: '刪除', style: 'destructive', onPress: () => onDelete(routineId, name) },
+      { text: '✏️ 編輯內容', onPress: () => router.push({ pathname: '/routine/[id]' as any, params: { id: String(routineId) } }) },
+      { text: '📋 複製一份', onPress: () => onDuplicate(routineId, name) },
+      { text: '🗑 刪除', style: 'destructive', onPress: () => onDelete(routineId, name) },
     ]);
   };
 

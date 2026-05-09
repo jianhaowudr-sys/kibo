@@ -120,6 +120,28 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
     onClose();
   };
 
+  // 斷續睡眠：儲存這段並繼續下一段（v1.0.6+）
+  // 例：11:00 上床 → 02:00 醒 → 02:30 再睡到 07:00
+  // 第一段 11:00→02:00 存 forceNew，下一段預設 bed=02:00 接續
+  const onSaveAndNextSegment = async () => {
+    if (invalid) {
+      haptic.error();
+      return;
+    }
+    haptic.success();
+    // forceNew=true 確保不覆寫，多筆 main sleep 同 dayKey
+    await upsertSleep({ bedtimeAt: bedDate.getTime(), wakeAt: wakeDate.getTime(), quality, forceNew: true });
+    // 把下一段預設 bedtime 接在剛才的 wake 之後
+    setBedH(wakeDate.getHours());
+    setBedM(nearestFiveMin(wakeDate));
+    setBedDayOffset(dayOffsetFromToday(wakeDate));
+    // wake 預設 + 30 min 後（讓使用者調整）
+    const nextWake = new Date(wakeDate.getTime() + 30 * 60_000);
+    setWakeH(nextWake.getHours());
+    setWakeM(nearestFiveMin(nextWake));
+    setWakeDayOffset(dayOffsetFromToday(nextWake));
+  };
+
   const HMRow = ({ label, h, m, setH, setM }: any) => (
     <View style={{ marginBottom: 14 }}>
       <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
@@ -257,6 +279,21 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
           >
             <Text style={{ color: invalid ? palette.mute : palette.bg, fontWeight: '700', fontSize: 16 }}>記錄</Text>
           </Pressable>
+
+          {kind === 'main' && !promptMode && (
+            <Pressable
+              onPress={onSaveAndNextSegment}
+              disabled={invalid}
+              style={{
+                paddingVertical: 10, alignItems: 'center', marginTop: 4,
+                opacity: invalid ? 0.4 : 1,
+              }}
+            >
+              <Text style={{ color: palette.mute, fontSize: 12 }}>
+                💤 存這段，再記下一段（斷續睡眠）
+              </Text>
+            </Pressable>
+          )}
         </View>
       </View>
     </Modal>

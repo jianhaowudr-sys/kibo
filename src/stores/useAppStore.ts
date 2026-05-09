@@ -78,6 +78,8 @@ type State = {
   waterToday: WaterLog[];
   bowelToday: BowelLog[];
   sleepLast: SleepLog | null;
+  /** 今天 main + nap 總時數（v1.0.6+） */
+  todaySleepTotal: { mainMin: number; napMin: number; totalMin: number; mainCount: number; napCount: number };
   periodRecent: PeriodDay[];
   petMessages: PetMessage[];
   healthSettings: HealthSettings;
@@ -216,6 +218,7 @@ type Actions = {
   syncCloud: () => Promise<{ pushed: number; pulled: number }>;
   enqueueSync: () => void;
   syncStatus: 'idle' | 'syncing' | 'error';
+  syncError: string | null;
   lastSyncedAt: number | null;
   logout: () => Promise<void>;
   loadAuthSession: () => Promise<void>;
@@ -267,6 +270,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   waterToday: [],
   bowelToday: [],
   sleepLast: null,
+  todaySleepTotal: { mainMin: 0, napMin: 0, totalMin: 0, mainCount: 0, napCount: 0 },
   periodRecent: [],
   petMessages: [],
   healthSettings: DEFAULT_HEALTH_SETTINGS,
@@ -276,6 +280,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   pendingReward: null,
   authLoading: false,
   syncStatus: 'idle',
+  syncError: null,
   lastSyncedAt: null,
   currentWorkoutId: null,
   activeSets: [],
@@ -894,10 +899,12 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   refreshHealth: async () => {
     const u = get().user;
     if (!u) return;
-    const [water, bowel, sleep, period, msgs, tokens] = await Promise.all([
+    const today = todayKey();
+    const [water, bowel, sleep, todaySleep, period, msgs, tokens] = await Promise.all([
       healthRepo.listWaterToday(u.id),
       healthRepo.listBowelToday(u.id),
       healthRepo.getSleepLast(u.id),
+      healthRepo.getDailyTotalSleepMin(u.id, today),
       healthRepo.listPeriodDays(u.id, 90),
       healthRepo.listPetMessages(u.id, 30),
       healthRepo.getStreakFreezeTokens(u.id),
@@ -906,6 +913,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       waterToday: water,
       bowelToday: bowel,
       sleepLast: sleep,
+      todaySleepTotal: todaySleep,
       periodRecent: period,
       petMessages: msgs,
       streakFreezeTokens: tokens,
@@ -1254,17 +1262,17 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   syncCloud: async () => {
     const session = get().authSession;
     if (!session?.user?.id) throw new Error('請先登入雲端');
-    set({ syncStatus: 'syncing' });
+    set({ syncStatus: 'syncing', syncError: null });
     try {
       const { fullSync } = await import('@/lib/cloud_sync');
       const stats = await fullSync(session.user.id);
       const pushed = stats.pushedWorkouts + stats.pushedSets + stats.pushedMeals + stats.pushedBody;
       const pulled = stats.pulledWorkouts + stats.pulledSets + stats.pulledMeals + stats.pulledBody;
       await get().refreshTodayMeals?.();
-      set({ syncStatus: 'idle', lastSyncedAt: Date.now() });
+      set({ syncStatus: 'idle', syncError: null, lastSyncedAt: Date.now() });
       return { pushed, pulled };
-    } catch (e) {
-      set({ syncStatus: 'error' });
+    } catch (e: any) {
+      set({ syncStatus: 'error', syncError: e?.message ?? String(e) });
       throw e;
     }
   },

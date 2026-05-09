@@ -373,6 +373,36 @@ export async function recomputeMainSleepAssignedDayKeys(
   return updated;
 }
 
+/**
+ * 取某 dayKey 的 main 主睡 + nap 小睡時數加總（v1.0.6+）。
+ * 用於 SleepCard 顯示「今天總睡眠 7.5h（含 1.5h 小睡）」。
+ */
+export async function getDailyTotalSleepMin(userId: number, dayKey: string): Promise<{
+  mainMin: number;
+  napMin: number;
+  totalMin: number;
+  mainCount: number;
+  napCount: number;
+}> {
+  const r = await sqliteDb.getFirstAsync<any>(
+    `SELECT
+       COALESCE(SUM(CASE WHEN kind = 'main' THEN duration_min ELSE 0 END), 0) as main_min,
+       COALESCE(SUM(CASE WHEN kind = 'nap' THEN duration_min ELSE 0 END), 0) as nap_min,
+       COALESCE(SUM(CASE WHEN kind = 'main' THEN 1 ELSE 0 END), 0) as main_c,
+       COALESCE(SUM(CASE WHEN kind = 'nap' THEN 1 ELSE 0 END), 0) as nap_c
+     FROM sleep_logs WHERE user_id = ? AND assigned_day_key = ?`,
+    [userId, dayKey],
+  );
+  const mainMin = r?.main_min ?? 0;
+  const napMin = r?.nap_min ?? 0;
+  return {
+    mainMin, napMin,
+    totalMin: mainMin + napMin,
+    mainCount: r?.main_c ?? 0,
+    napCount: r?.nap_c ?? 0,
+  };
+}
+
 export async function listSleepRecent(userId: number, days: number): Promise<SleepLog[]> {
   const cutoff = Date.now() - days * 86400_000;
   const rows = await sqliteDb.getAllAsync<any>(

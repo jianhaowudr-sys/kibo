@@ -52,6 +52,7 @@ export default function MeScreen() {
   const bootstrap = useAppStore((s) => s.bootstrap);
 
   const [section, setSection] = useState<Section>('stats');
+  const healthSettings = useAppStore((s) => s.healthSettings);
   const [activeModelId, setActiveModelIdState] = useState<AIModelId>('openai-gpt-4o');
   const [keysByProvider, setKeysByProvider] = useState<Record<AIProvider, string>>({
     openai: '', anthropic: '', gemini: '', minimax: '', 'minimax-cn': '',
@@ -74,6 +75,7 @@ export default function MeScreen() {
   const resetPasswordEmail = useAppStore((s) => s.resetPasswordEmail);
   const syncCloud = useAppStore((s) => s.syncCloud);
   const syncStatus = useAppStore((s) => s.syncStatus);
+  const syncError = useAppStore((s) => s.syncError);
   const lastSyncedAt = useAppStore((s) => s.lastSyncedAt);
   const [syncing, setSyncing] = useState(false);
   const logout = useAppStore((s) => s.logout);
@@ -545,6 +547,24 @@ export default function MeScreen() {
                         最短 {Math.floor((sleepStats.shortest ?? 0) / 60)}h{(sleepStats.shortest ?? 0) % 60}m · 最長 {Math.floor((sleepStats.longest ?? 0) / 60)}h{(sleepStats.longest ?? 0) % 60}m
                       </Text>
                     </View>
+                    {(() => {
+                      const target = healthSettings.sleep.targetDurationMin;
+                      if (!target || sleepStats.count === 0) return null;
+                      const expected = target * sleepStats.count;
+                      const debt = Math.max(0, expected - sleepStats.totalMin);
+                      const surplus = Math.max(0, sleepStats.totalMin - expected);
+                      const dh = Math.floor(debt / 60);
+                      const dm = debt % 60;
+                      const avgDeficit = (sleepStats.avgMin ?? 0) < target ? target - (sleepStats.avgMin ?? 0) : 0;
+                      return (
+                        <View className={`rounded-xl p-3 mt-2 ${debt > 0 ? 'bg-kibo-danger/15' : 'bg-kibo-success/15'}`}>
+                          <Text className="text-kibo-mute text-[10px] mb-1">睡眠負債（vs 目標 {Math.floor(target / 60)}h{target % 60 ? ` ${target % 60}m` : ''}）</Text>
+                          <Text className={`text-xs font-semibold ${debt > 0 ? 'text-kibo-danger' : 'text-kibo-success'}`}>
+                            {debt > 0 ? `欠 ${dh}h${dm > 0 ? ` ${dm}m` : ''} · 平均每晚少 ${Math.round(avgDeficit)}m` : `✅ 達標 +${Math.floor(surplus / 60)}h${surplus % 60 > 0 ? ` ${surplus % 60}m` : ''}`}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                   </>
                 )
               )}
@@ -741,9 +761,9 @@ export default function MeScreen() {
                     <Text className="text-kibo-text font-semibold" numberOfLines={1}>
                       {authSession.user?.email}
                     </Text>
-                    <Text className="text-kibo-mute text-[10px]">
+                    <Text className={`text-[10px] ${syncStatus === 'error' ? 'text-kibo-danger' : 'text-kibo-mute'}`}>
                       {syncStatus === 'syncing' ? '☁️ 同步中…'
-                        : syncStatus === 'error' ? '⚠️ 同步失敗'
+                        : syncStatus === 'error' ? `⚠️ 同步失敗${syncError ? `：${syncError}` : ''}`
                         : lastSyncedAt ? `✓ 上次同步 ${new Date(lastSyncedAt).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' })}`
                         : '已啟用雲端同步'}
                     </Text>
@@ -765,10 +785,10 @@ export default function MeScreen() {
                       setSyncing(false);
                     }
                   }}
-                  className="bg-kibo-primary rounded-xl py-2 mb-2"
+                  className={`rounded-xl py-2 mb-2 ${syncStatus === 'error' ? 'bg-kibo-danger' : 'bg-kibo-primary'}`}
                 >
                   <Text className="text-kibo-bg text-center font-semibold text-sm">
-                    {syncing ? '同步中...' : '☁️ 立即同步'}
+                    {syncing ? '同步中...' : syncStatus === 'error' ? '🔄 重試同步' : '☁️ 立即同步'}
                   </Text>
                 </Pressable>
                 <Pressable

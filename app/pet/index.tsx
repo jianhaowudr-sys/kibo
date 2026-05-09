@@ -89,7 +89,29 @@ export default function PetPage() {
               <Text style={{ color: '#1d2b53', fontWeight: '700', fontSize: 14, fontFamily: 'Cubic11' }}>
                 {pet?.name ?? 'Kibo'}
               </Text>
-              <Text style={{ color: '#83769c', fontSize: 11 }}>Lv.{pet?.level ?? 1} · 階段 {pet?.stage ?? 1}</Text>
+              <Text style={{ color: '#83769c', fontSize: 11 }}>
+                Lv.{pet?.level ?? 1} · 階段 {pet?.stage ?? 1} / 5
+              </Text>
+              {pet && pet.stage < 5 && (() => {
+                const nextStageExp = pet.stage * 1000;
+                const remaining = Math.max(0, nextStageExp - pet.exp);
+                const pctInStage = Math.min(100, ((pet.exp - (pet.stage - 1) * 1000) / 1000) * 100);
+                return (
+                  <View style={{ marginTop: 4 }}>
+                    <View style={{ height: 4, backgroundColor: '#cfc6e3', borderRadius: 2, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', width: `${pctInStage}%`, backgroundColor: '#1d2b53' }} />
+                    </View>
+                    <Text style={{ color: '#83769c', fontSize: 9, marginTop: 2 }}>
+                      下一階段需 {remaining} EXP（運動/飲食/睡眠等任何紀錄都餵）
+                    </Text>
+                  </View>
+                );
+              })()}
+              {pet && pet.stage >= 5 && (
+                <Text style={{ color: '#10b981', fontSize: 9, marginTop: 2, fontWeight: '700' }}>
+                  ✦ 已滿階段 — 下次孵新蛋換新寵
+                </Text>
+              )}
             </>
           )}
         </View>
