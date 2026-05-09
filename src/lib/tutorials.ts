@@ -224,6 +224,20 @@ export const TUTORIALS: Record<string, Tutorial> = {
     scope: 'progress',
     icon: '▶',
   },
+  'workout-exercise-timer': {
+    id: 'workout-exercise-timer',
+    title: '動作倒數計時',
+    body: '單位為「秒」的動作（棒式 / 跳繩 / HIIT）會多一個動作倒數區。展開選秒數→開始倒數→結束 haptic 提醒。組間休息倒數仍走下方既有的計時器。',
+    scope: 'workout',
+    icon: '⏱',
+  },
+  'diet-record-past-day': {
+    id: 'diet-record-past-day',
+    title: '補登記過去飲食',
+    body: '在飲食 tab 切到過去日期再按「+ 記錄一餐」，會自動把記錄時間設成該日的餐型標準時間（早 8:00／午 12:00／晚 18:30／點心 15:30），可在表單上方「⏰ 調」改。',
+    scope: 'diet',
+    icon: '⏪',
+  },
 };
 
 /** 取某 scope 下的全部 tip（給 ❓ icon 重看用） */

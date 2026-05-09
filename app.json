@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kibo 健身",
     "slug": "kibo",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kibo",
@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.kibo.fitness",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Kibo 需要相機權限以拍攝食物 / 營養標 / InBody 報告，由 AI 自動辨識熱量與數值。",
@@ -33,7 +33,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "app.kibo.fitness",
-      "versionCode": 30,
+      "versionCode": 31,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES"
