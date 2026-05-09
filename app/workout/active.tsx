@@ -187,9 +187,9 @@ export default function ActiveWorkout() {
 
     Alert.alert(
       '課表動作有變動',
-      `${summary}\n\n要怎麼處理這次的內容？`,
+      `${summary}\n\n這次紀錄一定會存（不會丟），請選擇課表本身要怎麼處理：\n\n• 只記這次：原課表不變，下次依舊\n• 覆蓋原課表：原課表動作清單改成這次的\n• 另存新課表：原課表保留，多一張新的`,
       [
-        { text: '不儲存變動', onPress: () => finalizeFinish({}) },
+        { text: '只記這次（不動原課表）', onPress: () => finalizeFinish({}) },
         { text: '💾 覆蓋原課表', onPress: () => finalizeFinish({ overwriteRoutine: currentRoutineId }) },
         {
           text: '📋 另存新課表',
@@ -344,15 +344,18 @@ export default function ActiveWorkout() {
           )}
         </View>
 
-        {selectedExercise?.unit === 'seconds' && (
+        {selectedExercise && (selectedExercise.unit === 'seconds' || selectedExercise.unit === 'minutes') && (
           <View className="mb-3">
             <ExerciseTimer
               initialSec={(() => {
                 const planned = plannedSetsByExercise[selectedExercise.id];
                 const lastDur = planned?.find((p) => p.durationSec)?.durationSec
                   ?? recentSetsByExercise[selectedExercise.id]?.[0]?.durationSec;
-                return typeof lastDur === 'number' && lastDur > 0 ? lastDur : 60;
+                if (typeof lastDur === 'number' && lastDur > 0) return lastDur;
+                // minutes 動作（跑步機/游泳）預設 5 分鐘；seconds 動作預設 60 秒
+                return selectedExercise.unit === 'minutes' ? 300 : 60;
               })()}
+              longMode={selectedExercise.unit === 'minutes'}
             />
           </View>
         )}

@@ -167,8 +167,11 @@ export default function DietScreen() {
           </Pressable>
         </View>
         {!viewingToday && (
-          <Pressable onPress={goToday} className="self-end px-3 py-1 rounded-full bg-kibo-card mb-3 active:opacity-70">
-            <Text className="text-kibo-primary text-xs font-semibold">回今天 →</Text>
+          <Pressable
+            onPress={goToday}
+            className="flex-row items-center justify-center bg-kibo-primary rounded-2xl py-3 mb-3 active:opacity-80"
+          >
+            <Text className="text-kibo-bg font-bold text-sm">↻ 回到今天</Text>
           </Pressable>
         )}
 

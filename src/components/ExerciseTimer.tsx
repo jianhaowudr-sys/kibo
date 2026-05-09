@@ -2,22 +2,27 @@ import { useEffect, useState, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import * as haptic from '@/lib/haptic';
 
-const PRESETS = [15, 30, 60, 90, 120];
+const PRESETS_SHORT = [15, 30, 60, 90, 120];               // 秒（plank/HIIT/跳繩）
+const PRESETS_LONG = [180, 300, 600, 900, 1200, 1800];     // 秒值對應 3/5/10/15/20/30 分（跑步機/游泳）
 
 /**
- * 動作執行倒數計時器（v1.0.5）。
+ * 動作執行倒數計時器（v1.0.5+）。
  *
  * 跟 RestTimer 類似但用途不同：
  * - RestTimer：完成一組後 auto-start，提醒組間休息結束
- * - ExerciseTimer：使用者手動 start，幫看 plank/HIIT 等動作執行時的秒數
+ * - ExerciseTimer：使用者手動 start，幫看 plank/HIIT/跑步機等動作執行時的秒數
  *
  * 倒數結束不自動 commit set；使用者撐完後自己按「完成這組」既有按鈕。
  *
- * - idle：薄 header（emoji + preset s + ▾）
- * - 展開：選秒數 + 開始按鈕
+ * - idle：薄 header（emoji + preset + ▾）
+ * - 展開：選秒/分數 + 開始按鈕
  * - 倒數中：大字倒數 + 中斷按鈕
+ *
+ * @param longMode - 為 true 時走「分鐘」preset（跑步機/游泳），預設秒模式
  */
-export function ExerciseTimer({ initialSec = 60 }: { initialSec?: number }) {
+export function ExerciseTimer({ initialSec = 60, longMode = false }: { initialSec?: number; longMode?: boolean }) {
+  const presets = longMode ? PRESETS_LONG : PRESETS_SHORT;
+  const formatPreset = (s: number) => longMode ? `${Math.round(s / 60)}m` : `${s}s`;
   const [active, setActive] = useState(false);
   const [remaining, setRemaining] = useState(initialSec);
   const [preset, setPreset] = useState(initialSec);
@@ -84,15 +89,15 @@ export function ExerciseTimer({ initialSec = 60 }: { initialSec?: number }) {
       >
         <Text className="text-kibo-mute text-xs">⏱ 動作倒數</Text>
         <View className="flex-row items-center gap-2">
-          <Text className="text-kibo-mute text-xs font-bold">{preset}s</Text>
+          <Text className="text-kibo-mute text-xs font-bold">{formatPreset(preset)}</Text>
           <Text className="text-kibo-mute text-xs">{expanded ? '▴' : '▾'}</Text>
         </View>
       </Pressable>
 
       {expanded && (
         <View className="px-4 pb-4 pt-1 border-t border-kibo-card">
-          <View className="flex-row gap-2 mb-3">
-            {PRESETS.map((p) => (
+          <View className="flex-row gap-2 mb-3 flex-wrap">
+            {presets.map((p) => (
               <Pressable
                 key={p}
                 onPress={() => {
@@ -100,10 +105,11 @@ export function ExerciseTimer({ initialSec = 60 }: { initialSec?: number }) {
                   setPreset(p);
                   setRemaining(p);
                 }}
-                className={`flex-1 py-2 rounded-xl ${preset === p ? 'bg-kibo-success' : 'bg-kibo-card'}`}
+                className={`px-3 py-2 rounded-xl ${preset === p ? 'bg-kibo-success' : 'bg-kibo-card'}`}
+                style={{ minWidth: 60 }}
               >
                 <Text className={`text-center font-semibold text-xs ${preset === p ? 'text-kibo-bg' : 'text-kibo-text'}`}>
-                  {p}s
+                  {formatPreset(p)}
                 </Text>
               </Pressable>
             ))}

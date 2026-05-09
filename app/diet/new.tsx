@@ -428,16 +428,32 @@ export default function NewMeal() {
           ))}
         </View>
 
-        <Pressable
-          onPress={() => { haptic.tapLight(); setTimePickerOpen(true); }}
-          className={`flex-row items-center justify-between mb-4 px-4 py-3 rounded-2xl border ${isPastDate ? 'bg-kibo-warning/15 border-kibo-warning' : 'bg-kibo-surface border-kibo-card'}`}
-        >
-          <Text className="text-kibo-mute text-xs">記錄到</Text>
-          <Text className={`text-sm font-bold ${isPastDate ? 'text-kibo-warning' : 'text-kibo-text'}`}>
-            {format(loggedAt, 'yyyy/MM/dd HH:mm')} {isPastDate && '（補登記）'}
-          </Text>
-          <Text className="text-kibo-mute text-xs">⏰ 調</Text>
-        </Pressable>
+        <View className={`flex-row items-center mb-4 px-4 py-3 rounded-2xl border ${isPastDate ? 'bg-kibo-warning/15 border-kibo-warning' : 'bg-kibo-surface border-kibo-card'}`}>
+          <Pressable
+            onPress={() => { haptic.tapLight(); setTimePickerOpen(true); }}
+            className="flex-1 flex-row items-center"
+          >
+            <Text className="text-kibo-mute text-xs mr-2">記錄到</Text>
+            <Text className={`text-sm font-bold flex-1 ${isPastDate ? 'text-kibo-warning' : 'text-kibo-text'}`}>
+              {format(loggedAt, 'yyyy/MM/dd HH:mm')} {isPastDate && '（補登記）'}
+            </Text>
+            <Text className="text-kibo-mute text-xs ml-2">⏰</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              haptic.tapLight();
+              setUserTouchedTime((v) => !v);
+            }}
+            className={`ml-2 px-2 py-1 rounded-full ${userTouchedTime ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
+          >
+            <Text className={`text-xs ${userTouchedTime ? 'text-kibo-bg' : 'text-kibo-mute'}`}>
+              {userTouchedTime ? '🔒 鎖' : '🔄 同步'}
+            </Text>
+          </Pressable>
+        </View>
+        <Text className="text-kibo-mute text-[10px] mt-[-12] mb-3">
+          {userTouchedTime ? '鎖定中：切換餐型不會改時間' : '同步中：切換餐型會自動套用該餐標準時間'}
+        </Text>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <Text className="text-kibo-mute text-xs">食物照片 ({photos.length}/{MAX_PHOTOS})</Text>

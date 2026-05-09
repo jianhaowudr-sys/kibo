@@ -1,6 +1,7 @@
 import { View, Text, Pressable, Image, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as haptic from '@/lib/haptic';
 import { useAppStore } from '@/stores/useAppStore';
 import { centerCropTo3x4, ANGLE_LABELS } from '@/lib/progress_photo';
@@ -43,6 +44,15 @@ export default function ProgressConfirm() {
     })();
   }, [srcUri, srcW, srcH]);
 
+  const cleanupCroppedCache = async () => {
+    if (!croppedUri) return;
+    try {
+      await FileSystem.deleteAsync(croppedUri, { idempotent: true });
+    } catch {
+      // 清不到不致命
+    }
+  };
+
   const onSave = async () => {
     if (!croppedUri) return;
     setBusy(true);
@@ -57,6 +67,12 @@ export default function ProgressConfirm() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const onRetake = async () => {
+    haptic.tapLight();
+    await cleanupCroppedCache();
+    router.replace({ pathname: '/progress/capture', params: { angle } } as any);
   };
 
   return (
@@ -110,11 +126,11 @@ export default function ProgressConfirm() {
       </Pressable>
 
       <Pressable
-        onPress={() => { haptic.tapLight(); router.back(); }}
+        onPress={onRetake}
         disabled={busy}
         className="py-3"
       >
-        <Text className="text-kibo-mute text-center text-sm">重拍</Text>
+        <Text className="text-kibo-mute text-center text-sm">↻ 重拍同角度</Text>
       </Pressable>
     </ScrollView>
   );
