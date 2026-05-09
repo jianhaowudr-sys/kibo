@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { ExerciseSetTable } from '@/components/ExerciseSetTable';
 import { RestTimer } from '@/components/RestTimer';
+import { ExerciseTimer } from '@/components/ExerciseTimer';
 import { formatDuration } from '@/lib/date';
 import * as repo from '@/db/repo';
 import type { Exercise } from '@/db/schema';
@@ -342,6 +343,19 @@ export default function ActiveWorkout() {
             </View>
           )}
         </View>
+
+        {selectedExercise?.unit === 'seconds' && (
+          <View className="mb-3">
+            <ExerciseTimer
+              initialSec={(() => {
+                const planned = plannedSetsByExercise[selectedExercise.id];
+                const lastDur = planned?.find((p) => p.durationSec)?.durationSec
+                  ?? recentSetsByExercise[selectedExercise.id]?.[0]?.durationSec;
+                return typeof lastDur === 'number' && lastDur > 0 ? lastDur : 60;
+              })()}
+            />
+          </View>
+        )}
 
         <View className="mb-3">
           <RestTimer autoStartKey={restTriggerKey} />
