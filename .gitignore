@@ -49,8 +49,12 @@ google-play-service-account.json
 *.aab
 *.ipa
 *.csv
+*.der
 _connect.html
 kibo-backup_*.json
+
+# Claude Code local state
+.claude/
 
 # typescript
 *.tsbuildinfo
