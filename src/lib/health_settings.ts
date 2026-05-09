@@ -27,6 +27,8 @@ export type HealthSettings = {
     targetWakeTime: string;
     wakePrompt: { enabled: boolean; afterHour: number };
     reminder: ReminderConfig;
+    /** 跨夜歸日 cutoff：上床 hour < 此值 → 算前一天的睡眠延伸（熬夜）。預設 4。 */
+    crossNightCutoffHour: number;
   };
   period: {
     enabled: boolean;
@@ -73,6 +75,7 @@ export const DEFAULT_HEALTH_SETTINGS: HealthSettings = {
       type: 'fixed',
       fixedTimes: ['22:30'],
     },
+    crossNightCutoffHour: 4,
   },
   period: {
     enabled: false,
