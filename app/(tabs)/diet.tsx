@@ -86,7 +86,10 @@ export default function DietScreen() {
     haptic.tapMedium();
     router.push({
       pathname: '/diet/new' as any,
-      params: mealType ? { type: mealType } : {},
+      params: {
+        ...(mealType ? { type: mealType } : {}),
+        dateKey: selectedKey,  // 過去日期 → diet/new 預設為該日餐型標準時間
+      },
     });
   };
 
