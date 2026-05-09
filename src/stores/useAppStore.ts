@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { User, Exercise, Workout, Egg, Pet, EggType, Routine, RoutineExercise, WorkoutSet, BodyMeasurement, Meal, MealType } from '@/db/schema';
+import type { User, Exercise, Workout, Egg, Pet, EggType, Routine, RoutineExercise, WorkoutSet, BodyMeasurement, Meal, MealType, ProgressPhoto } from '@/db/schema';
 import type { ThemeMode, ThemeStyle } from '@/lib/theme';
 import type { Session } from '@supabase/supabase-js';
 import type { WaterLog, BowelLog, SleepLog, PeriodDay, PetMessage, BristolType, PeriodFlow, CustomFood } from '@/db/schema';
@@ -59,6 +59,7 @@ type State = {
   weeklyCount: number;
   routines: Routine[];
   bodyMeasurements: BodyMeasurement[];
+  progressPhotos: ProgressPhoto[];
   todayMeals: Meal[];
   todayNutrition: { calories: number; protein: number; carb: number; fat: number; count: number };
   themeMode: ThemeMode;
@@ -148,6 +149,9 @@ type Actions = {
   refreshBodyMeasurements: () => Promise<void>;
   addBodyMeasurement: (data: Omit<import('@/db/schema').NewBodyMeasurement, 'id' | 'createdAt' | 'userId'> & { measuredAt: Date | number }) => Promise<void>;
   deleteBodyMeasurement: (id: number) => Promise<void>;
+  refreshProgressPhotos: () => Promise<void>;
+  addProgressPhoto: (data: { angle: 'front' | 'side' | 'back'; photoUri: string; note: string | null }) => Promise<number>;
+  deleteProgressPhoto: (id: number) => Promise<void>;
 
   refreshTodayMeals: () => Promise<void>;
   addMeal: (data: Omit<import('@/db/schema').NewMeal, 'id' | 'createdAt' | 'userId'> & { loggedAt: Date | number }) => Promise<number>;
@@ -247,6 +251,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   weeklyCount: 0,
   routines: [],
   bodyMeasurements: [],
+  progressPhotos: [],
   todayMeals: [],
   todayNutrition: { calories: 0, protein: 0, carb: 0, fat: 0, count: 0 },
   themeMode: 'dark' as ThemeMode,
@@ -688,6 +693,35 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     await repo.deleteBodyMeasurement(id);
     await get().refreshBodyMeasurements();
     get().enqueueSync?.();
+  },
+
+  refreshProgressPhotos: async () => {
+    const { user } = get();
+    if (!user) return;
+    const progressPhotos = await repo.listProgressPhotos(user.id);
+    set({ progressPhotos });
+  },
+
+  addProgressPhoto: async (data) => {
+    const { user } = get();
+    if (!user) throw new Error('no user');
+    const snapshot = await repo.getLatestBodyMeasurementForSnapshot(user.id);
+    const id = await repo.createProgressPhoto({
+      userId: user.id,
+      capturedAt: Date.now(),
+      angle: data.angle,
+      photoUri: data.photoUri,
+      weightKg: snapshot?.weightKg ?? null,
+      bodyFatPct: snapshot?.bodyFatPct ?? null,
+      note: data.note,
+    });
+    await get().refreshProgressPhotos();
+    return id;
+  },
+
+  deleteProgressPhoto: async (id) => {
+    await repo.deleteProgressPhoto(id);
+    await get().refreshProgressPhotos();
   },
 
   refreshTodayMeals: async () => {
