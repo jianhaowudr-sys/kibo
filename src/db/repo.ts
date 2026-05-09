@@ -3,6 +3,7 @@ import type {
   User, Exercise, Workout, WorkoutSet, Egg, Pet, EggType,
   Routine, RoutineExercise, BodyMeasurement, NewBodyMeasurement,
   Meal, NewMeal, MealType,
+  ProgressPhoto, NewProgressPhoto, ProgressAngle,
 } from './schema';
 import { savePhotoToDocs, deletePhotoFile } from '@/lib/photo_storage';
 
@@ -938,6 +939,86 @@ export async function recentWorkoutDates(userId: number, limit = 30): Promise<st
     [userId, limit],
   );
   return rows.map(r => r.d);
+}
+
+// ===== Progress Photos（v1.0.3）=====
+
+const rowToProgressPhoto = (r: Row): ProgressPhoto => ({
+  id: r.id,
+  userId: r.user_id,
+  capturedAt: new Date(r.captured_at),
+  angle: r.angle,
+  photoUri: r.photo_uri,
+  weightKg: r.weight_kg,
+  bodyFatPct: r.body_fat_pct,
+  note: r.note,
+  createdAt: new Date(r.created_at),
+});
+
+export async function listProgressPhotos(userId: number): Promise<ProgressPhoto[]> {
+  const rs = await sqliteDb.getAllAsync<Row>(
+    'SELECT * FROM progress_photos WHERE user_id = ? ORDER BY captured_at ASC',
+    [userId],
+  );
+  return rs.map(rowToProgressPhoto);
+}
+
+export async function getLatestProgressPhotoByAngle(
+  userId: number,
+  angle: ProgressAngle,
+): Promise<ProgressPhoto | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(
+    'SELECT * FROM progress_photos WHERE user_id = ? AND angle = ? ORDER BY captured_at DESC LIMIT 1',
+    [userId, angle],
+  );
+  return r ? rowToProgressPhoto(r) : null;
+}
+
+export async function createProgressPhoto(data: {
+  userId: number;
+  capturedAt: Date | number;
+  angle: ProgressAngle;
+  photoUri: string;
+  weightKg: number | null;
+  bodyFatPct: number | null;
+  note: string | null;
+}): Promise<number> {
+  const persisted = await savePhotoToDocs(data.photoUri, 'progress');
+  const result = await sqliteDb.runAsync(
+    `INSERT INTO progress_photos
+       (user_id, captured_at, angle, photo_uri, weight_kg, body_fat_pct, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.userId,
+      typeof data.capturedAt === 'number' ? data.capturedAt : data.capturedAt.getTime(),
+      data.angle,
+      persisted ?? data.photoUri,
+      data.weightKg,
+      data.bodyFatPct,
+      data.note,
+      Date.now(),
+    ],
+  );
+  return result.lastInsertRowId as number;
+}
+
+export async function deleteProgressPhoto(id: number): Promise<void> {
+  const r = await sqliteDb.getFirstAsync<Row>('SELECT photo_uri FROM progress_photos WHERE id = ?', [id]);
+  if (r?.photo_uri) await deletePhotoFile(r.photo_uri);
+  await enqueueRemoteDelete('progress_photos', id);
+  await sqliteDb.runAsync('DELETE FROM progress_photos WHERE id = ?', [id]);
+}
+
+export async function getLatestBodyMeasurementForSnapshot(userId: number): Promise<{
+  weightKg: number | null;
+  bodyFatPct: number | null;
+} | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(
+    'SELECT weight_kg, body_fat_pct FROM body_measurements WHERE user_id = ? ORDER BY measured_at DESC LIMIT 1',
+    [userId],
+  );
+  if (!r) return null;
+  return { weightKg: r.weight_kg, bodyFatPct: r.body_fat_pct };
 }
 
 // ===== Custom Foods（plan v5）=====
