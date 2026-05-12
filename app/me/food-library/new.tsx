@@ -6,6 +6,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { readMealFromBase64 } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
+import { compressForVision } from '@/lib/image_compress';
 import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
@@ -38,11 +39,11 @@ export default function NewCustomFood() {
     }
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8, base64: true,
+      quality: 0.9,
     });
     if (res.canceled || !res.assets?.[0]) return;
     setPhotoUri(res.assets[0].uri);
-    setPhotoBase64(res.assets[0].base64 ?? null);
+    setPhotoBase64(await compressForVision(res.assets[0].uri));
   };
 
   const aiParse = async () => {

@@ -276,7 +276,18 @@ async function callOpenAICompatible(p: {
     throw new Error(`API 錯誤 (${res.status}) @ ${p.baseUrl}: ${errText.slice(0, 200)}`);
   }
   const json = await res.json();
-  return json.choices?.[0]?.message?.content ?? '';
+  const choice = json.choices?.[0];
+  const content = choice?.message?.content ?? '';
+  const finishReason = choice?.finish_reason;
+  if (!content.trim()) {
+    throw new Error(
+      `AI 回傳空白（finish_reason=${finishReason || 'unknown'}）。常見原因：圖片太大被拒、內容過濾誤觸（手錶/手掌入鏡時偶發）、或 API 額度不足`,
+    );
+  }
+  if (finishReason === 'length') {
+    throw new Error('AI 回傳被截斷（max_tokens 不足），請再試一次');
+  }
+  return content;
 }
 
 async function callAnthropic(p: {
@@ -322,8 +333,18 @@ async function callAnthropic(p: {
     throw new Error(`Anthropic API 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
   }
   const json = await res.json();
+  const stopReason = json.stop_reason;
   const block = (json.content ?? []).find((b: any) => b.type === 'text');
-  return block?.text ?? '';
+  const text = block?.text ?? '';
+  if (!text.trim()) {
+    throw new Error(
+      `Anthropic 回傳空白（stop_reason=${stopReason || 'unknown'}）。常見原因：圖片超過 5MB 解碼後限制、內容過濾、或額度耗盡`,
+    );
+  }
+  if (stopReason === 'max_tokens') {
+    throw new Error('Anthropic 回傳被截斷（max_tokens 不足），請再試一次');
+  }
+  return text;
 }
 
 async function callGemini(p: {
@@ -363,6 +384,17 @@ async function callGemini(p: {
     throw new Error(`Gemini API 錯誤 (${res.status}): ${errText.slice(0, 200)}`);
   }
   const json = await res.json();
-  const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  const cand = json.candidates?.[0];
+  const finishReason = cand?.finishReason;
+  const blockReason = json.promptFeedback?.blockReason;
+  const text = cand?.content?.parts?.[0]?.text ?? '';
+  if (!text.trim()) {
+    throw new Error(
+      `Gemini 回傳空白（finishReason=${finishReason || '?'}, blockReason=${blockReason || '?'}）。常見原因：safety filter 誤觸、圖片太大或額度耗盡`,
+    );
+  }
+  if (finishReason === 'MAX_TOKENS') {
+    throw new Error('Gemini 回傳被截斷（maxOutputTokens 不足），請再試一次');
+  }
   return text;
 }

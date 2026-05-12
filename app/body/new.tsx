@@ -7,6 +7,7 @@ import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
 import { readInBodyFromBase64, type InBodyReading } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
+import { compressForVision } from '@/lib/image_compress';
 import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 
@@ -66,19 +67,17 @@ export default function NewBodyMeasurement() {
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.7,
-          base64: true,
+          quality: 0.9,
         })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.7,
-          base64: true,
+          quality: 0.9,
         });
 
     if (result.canceled || !result.assets?.[0]) return;
     const a = result.assets[0];
     setPhotoUri(a.uri);
-    setPhotoBase64(a.base64 ?? null);
+    setPhotoBase64(await compressForVision(a.uri, 'label'));
   };
 
   const onChoosePhoto = () => {

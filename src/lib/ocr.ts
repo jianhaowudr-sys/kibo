@@ -170,7 +170,16 @@ async function singleRead(base64: string, options: InternalOptions): Promise<Mea
     throw new Error('此模型不支援看圖，請換 OpenAI / Claude / Gemini');
   }
 
-  const parsed = JSON.parse(cleaned);
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e: any) {
+    throw new Error(
+      cleaned
+        ? `AI 回傳非 JSON（前 150 字）：${cleaned.slice(0, 150)}`
+        : 'AI 回傳空白回應（可能是圖太大被拒、內容過濾觸發、或 API 額度問題）',
+    );
+  }
   if (parsed.error) throw new Error(parsed.error);
   return parsed as MealReading;
 }

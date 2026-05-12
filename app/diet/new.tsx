@@ -7,6 +7,7 @@ import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
 import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, readNutritionLabelFromBase64, type MealReading, type MergeMode } from '@/lib/ocr';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
+import { compressForVision } from '@/lib/image_compress';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
 import { BOTTOM_BAR_PADDING } from '@/lib/layout';
@@ -233,22 +234,24 @@ export default function NewMeal() {
     }
 
     const result = source === 'camera'
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, base64: true, exif: true })
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.9, exif: true })
       : await ImagePicker.launchImageLibraryAsync({
           mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          quality: 0.8,
-          base64: true,
+          quality: 0.9,
           exif: true,
           allowsMultipleSelection: source === 'library',
           selectionLimit: remaining,
         });
 
     if (result.canceled || !result.assets || result.assets.length === 0) return;
-    const newSlots: PhotoSlot[] = result.assets.slice(0, remaining).map((a: any) => ({
-      uri: a.uri,
-      base64: a.base64 ?? '',
-      takenAt: extractTakenAt(a, source),
-    }));
+    const preset = photoMode === 'label' ? 'label' : 'food';
+    const newSlots: PhotoSlot[] = await Promise.all(
+      result.assets.slice(0, remaining).map(async (a: any) => ({
+        uri: a.uri,
+        base64: await compressForVision(a.uri, preset),
+        takenAt: extractTakenAt(a, source),
+      })),
+    );
     setPhotos((prev) => [...prev, ...newSlots]);
     // 加新照片就清掉之前的 AI 結果（避免混淆）
     setAiParsed(false);
