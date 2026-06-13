@@ -1,5 +1,6 @@
 import { getMemoryHint } from './memory';
 import { callVisionJSON } from './ai_provider';
+import { MEAL_PROMPT, buildPalmRefHint } from './meal_prompts';
 
 export type MealReading = {
   title?: string;
@@ -9,69 +10,6 @@ export type MealReading = {
   totalCarb: number;
   totalFat: number;
 };
-
-const MEAL_PROMPT = `你是台灣食物營養估算助手。使用者在台灣，會上傳一餐照片（外食、便當、自煮、小吃都有）。
-
-## 判讀流程（內部請依此順序思考，不輸出 reasoning）：
-
-第一步「辨識」：先仔細看照片，列出你看到的所有食物 / 飲料 / 醬料 / 配菜。注意容器大小（飯碗、便當盒、一般盤子直徑約 20cm）作為參照物。別漏了：
-- 醬汁（滷肉飯的油脂、酸菜、辣油）
-- 配菜（滷蛋、豆乾、酸菜、花生、醃菜）
-- 隱藏油脂（三層肉、肥肉、炸物外皮）
-- 飲料（含糖飲料、湯底）
-
-第二步「估份量」：根據容器/參照物估每樣的公克 / 份數。台灣一碗白飯 ≈ 200-250g、一個便當盒 ≈ 700-800g 總重。
-
-第三步「估營養素」：用下方台灣常見菜參考表，依實際份量 scale。
-
-## 台灣常見菜與標準熱量參考（per 一般份量）：
-- 白飯一碗 (200g) 280 kcal，P:6 C:62 F:0
-- 滷肉飯一碗：600 kcal（P:15 C:85 F:20，含肥肉+滷汁油脂）
-- 雞腿便當：900 kcal（P:40 C:100 F:35，含三樣配菜）
-- 排骨便當：850 kcal
-- 牛肉麵大碗：750 kcal（P:35 C:95 F:20）
-- 陽春麵 + 小菜：500 kcal
-- 鹽酥雞一份：500 kcal（超高油 F:35）
-- 雞排一塊：450 kcal（F:25）
-- 肉粽一顆：450 kcal
-- 飯糰（超商）：300 kcal
-- 蛋餅（加蛋）：350 kcal
-- 小籠包 8 顆：560 kcal
-- 炒麵一盤：600 kcal
-- 蚵仔煎：500 kcal
-- 擔仔麵：300 kcal
-- 滷味一份（中）：400 kcal
-- 麥當勞大麥克：550 kcal，套餐 1200 kcal
-- 珍珠奶茶 700ml 全糖：550 kcal
-- 含糖拿鐵 大杯：250 kcal
-- 美式咖啡黑：5 kcal
-- 水餃 10 顆：450 kcal
-- 燙青菜：50 kcal
-- 荷包蛋：90 kcal
-- 滷蛋：80 kcal
-- 豆干一塊：35 kcal
-
-## 原則：
-- 照片油光越多、湯汁越多 → 脂肪上調
-- 便當有三格配菜 → 至少多加 100-150 kcal
-- 若畫面有時間標記（如 12:30）→ 判斷餐別，午/晚餐份量應比早餐大
-- 含糖飲料、湯底別漏
-
-## 輸出（嚴格 JSON，不要 markdown，不要 reasoning 文字）：
-{
-  "title": "午餐｜滷肉飯套餐",
-  "items": [
-    {"name":"滷肉飯","portion":"一碗","calories":600,"protein":15,"carb":85,"fat":20},
-    {"name":"滷蛋","portion":"一顆","calories":80,"protein":7,"carb":1,"fat":5},
-    {"name":"燙青菜","portion":"一盤","calories":50,"protein":2,"carb":6,"fat":1}
-  ],
-  "totalCalories": 730,
-  "totalProtein": 24,
-  "totalCarb": 92,
-  "totalFat": 26
-}
-
-若不是食物照片或無法辨識，回傳 {"error":"無法判讀"}`;
 
 export type MealParseOptions = {
   extraHint?: string;
@@ -144,13 +82,7 @@ async function singleRead(base64: string, options: InternalOptions): Promise<Mea
   if (timeHint) parts.push(timeHint);
   if (options.memoryHint) parts.push(options.memoryHint);
   if (options.palmRef) {
-    parts.push(
-      `## 比例尺參照
-使用者的手掌張開時：長 ${options.palmRef.lengthCm} cm（中指尖到手腕）、寬 ${options.palmRef.widthCm} cm（四指根橫寬不含拇指）。
-若照片中出現平放且五指張開的手掌，請優先用此 calibrate 食物的真實尺寸再估份量；若手掌姿勢非五指張開或不平放（如握拳、側立、捏東西），可忽略此參照。
-
-⚠️ 重要校正：你過往對台灣食物份量普遍高估 20~40%（特別是便當、麵食、油脂類），這次有比例尺請重新檢視，不要套用「便當盒一定 700~800g」這類預設先驗——以實際照片中食物相對於手掌的尺寸為準。`,
-    );
+    parts.push(buildPalmRefHint(options.palmRef));
   }
   const hint = options.extraHint?.trim();
   if (hint) parts.push(`使用者補充：${hint}`);
