@@ -15,6 +15,7 @@ import { PIXEL_COLORS, PIXEL_VARS } from '@/lib/palette';
 import { UndoToast } from '@/components/common/UndoToast';
 import { SurpriseBoxModal } from '@/components/dashboard/SurpriseBoxModal';
 import { setupNotificationActionHandler } from '@/lib/reminders';
+import { perfStart } from '@/lib/perf';
 
 function SurpriseBoxBridge() {
   const reward = useAppStore((s) => s.pendingReward);
@@ -70,8 +71,14 @@ export default function RootLayout() {
   useEffect(() => {
     (async () => {
       try {
+        const endTotal = perfStart('startup:total-to-ready');
+        const endSchema = perfStart('startup:schema');
         await ensureSchema();
+        endSchema();
+        const endBoot = perfStart('startup:bootstrap');
         await bootstrap();
+        endBoot();
+        const endRest = perfStart('startup:prefs+tutorial+auth');
         await loadThemeMode();
         await loadThemeStyle();
         await loadLowPowerMode();
@@ -80,6 +87,7 @@ export default function RootLayout() {
         await loadOnboardingPetName();
         await hydrateTutorial();
         await loadAuthSession();
+        endRest();
         // 第一次啟動 → 進 onboarding
         const { user } = useAppStore.getState();
         if (user && !user.onboardingCompletedAt) {
@@ -91,6 +99,7 @@ export default function RootLayout() {
             } catch {}
           }, 500);
         }
+        endTotal();
         setReady(true);
       } catch (e: any) {
         setErr(e?.message ?? String(e));
