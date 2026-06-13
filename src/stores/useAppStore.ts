@@ -296,60 +296,66 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
 
   bootstrap: async () => {
     const user = await repo.getCurrentUser();
-    const exercises = await repo.listExercises();
-    const activeEgg = user ? await repo.getActiveEgg(user.id) : null;
-    const pets = user ? await repo.listPets(user.id) : [];
-    const recentWorkouts = user ? await repo.listWorkouts(user.id, 20) : [];
-    const routines = user ? await repo.listRoutines(user.id) : [];
-    const weeklyCount = user ? await repo.weeklyWorkoutCount(user.id) : 0;
+
+    if (!user) {
+      const exercises = await repo.listExercises();
+      set({ user, exercises, activeEgg: null, pets: [], recentWorkouts: [], routines: [], weeklyCount: 0 });
+      return;
+    }
+
+    const [exercises, activeEgg, pets, recentWorkouts, routines, weeklyCount] = await Promise.all([
+      repo.listExercises(),
+      repo.getActiveEgg(user.id),
+      repo.listPets(user.id),
+      repo.listWorkouts(user.id, 20),
+      repo.listRoutines(user.id),
+      repo.weeklyWorkoutCount(user.id),
+    ]);
     set({ user, exercises, activeEgg, pets, recentWorkouts, routines, weeklyCount });
 
     // 健康模組初始化
-    if (user) {
-      const [hsRaw, dlRaw, tokens] = await Promise.all([
-        healthRepo.getHealthSettings(user.id),
-        healthRepo.getDashboardLayout(user.id),
-        healthRepo.getStreakFreezeTokens(user.id),
-      ]);
-      set({
-        healthSettings: parseHealthSettings(hsRaw),
-        dashboardLayoutJson: dlRaw,
-        streakFreezeTokens: tokens,
-      });
+    const [hsRaw, dlRaw, tokens] = await Promise.all([
+      healthRepo.getHealthSettings(user.id),
+      healthRepo.getDashboardLayout(user.id),
+      healthRepo.getStreakFreezeTokens(user.id),
+    ]);
+    set({
+      healthSettings: parseHealthSettings(hsRaw),
+      dashboardLayoutJson: dlRaw,
+      streakFreezeTokens: tokens,
+    });
 
-      // 嘗試自動消耗補課券救 streak
-      try {
-        const { tryAutoFreeze } = await import('@/lib/streak_freeze');
-        const result = await tryAutoFreeze(user);
-        if (result.used) {
-          await get().refreshUser();
-          // 寫一則寵物訊息通知使用者
-          await healthRepo.addPetMessage({
-            userId: user.id,
-            petId: pets[0]?.id ?? null,
-            generatedAt: new Date(),
-            category: 'celebration',
-            text: `補課券救了你的 ${user.streak} 天連續紀錄！還有 ${result.tokensLeft} 張`,
-            read: 0,
-            triggerData: JSON.stringify({ type: 'freeze-used', tokensLeft: result.tokensLeft }),
-          });
-          set({ streakFreezeTokens: result.tokensLeft });
-        }
-      } catch (e) {
-        console.warn('Auto freeze failed', e);
+    // 嘗試自動消耗補課券救 streak
+    try {
+      const { tryAutoFreeze } = await import('@/lib/streak_freeze');
+      const result = await tryAutoFreeze(user);
+      if (result.used) {
+        await get().refreshUser();
+        // 寫一則寵物訊息通知使用者
+        await healthRepo.addPetMessage({
+          userId: user.id,
+          petId: pets[0]?.id ?? null,
+          generatedAt: new Date(),
+          category: 'celebration',
+          text: `補課券救了你的 ${user.streak} 天連續紀錄！還有 ${result.tokensLeft} 張`,
+          read: 0,
+          triggerData: JSON.stringify({ type: 'freeze-used', tokensLeft: result.tokensLeft }),
+        });
+        set({ streakFreezeTokens: result.tokensLeft });
       }
-
-      // 每天首次 bootstrap 生成寵物訊息（同天不重複，pet_messages 內部會去重）
-      try {
-        const { generateDailyMessages } = await import('@/lib/pet_messages');
-        await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
-      } catch (e) {
-        console.warn('Pet messages generate failed', e);
-      }
-
-      await get().refreshHealth();
-      await get().refreshCustomFoods();
+    } catch (e) {
+      console.warn('Auto freeze failed', e);
     }
+
+    // 每天首次 bootstrap 生成寵物訊息（同天不重複，pet_messages 內部會去重）
+    try {
+      const { generateDailyMessages } = await import('@/lib/pet_messages');
+      await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
+    } catch (e) {
+      console.warn('Pet messages generate failed', e);
+    }
+
+    await Promise.all([get().refreshHealth(), get().refreshCustomFoods()]);
   },
 
   refreshUser: async () => {
