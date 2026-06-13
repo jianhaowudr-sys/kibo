@@ -1,6 +1,6 @@
 import { getMemoryHint } from './memory';
 import { callVisionJSON } from './ai_provider';
-import { MEAL_PROMPT, buildPalmRefHint } from './meal_prompts';
+import { MEAL_PROMPT, VERIFY_PROMPT, buildPalmRefHint } from './meal_prompts';
 
 export type MealReading = {
   title?: string;
@@ -13,7 +13,8 @@ export type MealReading = {
 
 export type MealParseOptions = {
   extraHint?: string;
-  economy?: boolean;
+  /** 跳過背景複核（低耗模式或呼叫端只要單次結果時用） */
+  skipVerify?: boolean;
   capturedAt?: Date | number;
   /** 手掌參照（plan v6）：照片中若有平放手掌，AI 用此 calibrate 真實尺寸 */
   palmRef?: { lengthCm: number; widthCm: number };
@@ -76,6 +77,27 @@ type InternalOptions = MealParseOptions & {
   temperature?: number;
 };
 
+function parseMealJson(raw: string): MealReading {
+  const cleaned = raw.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '');
+
+  if (/^<think>/i.test(cleaned) || cleaned.includes('I cannot see') || cleaned.includes('cannot read')) {
+    throw new Error('此模型不支援看圖，請換 OpenAI / Claude / Gemini');
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    throw new Error(
+      cleaned
+        ? `AI 回傳非 JSON（前 150 字）：${cleaned.slice(0, 150)}`
+        : 'AI 回傳空白回應（可能是圖太大被拒、內容過濾觸發、或 API 額度問題）',
+    );
+  }
+  if (parsed.error) throw new Error(parsed.error);
+  return parsed as MealReading;
+}
+
 async function singleRead(base64: string, options: InternalOptions): Promise<MealReading> {
   const parts: string[] = ['請依照系統指示的四步判讀流程（辨識 → 估份量 → 估營養素 → 自我檢查），判讀這一餐。'];
   const timeHint = mealTimeHint(options.capturedAt);
@@ -96,24 +118,7 @@ async function singleRead(base64: string, options: InternalOptions): Promise<Mea
     maxTokens: 2500,
   });
 
-  const cleaned = raw.trim().replace(/^```json\s*/, '').replace(/```\s*$/, '');
-
-  if (/^<think>/i.test(cleaned) || cleaned.includes('I cannot see') || cleaned.includes('cannot read')) {
-    throw new Error('此模型不支援看圖，請換 OpenAI / Claude / Gemini');
-  }
-
-  let parsed: any;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (e: any) {
-    throw new Error(
-      cleaned
-        ? `AI 回傳非 JSON（前 150 字）：${cleaned.slice(0, 150)}`
-        : 'AI 回傳空白回應（可能是圖太大被拒、內容過濾觸發、或 API 額度問題）',
-    );
-  }
-  if (parsed.error) throw new Error(parsed.error);
-  return parsed as MealReading;
+  return parseMealJson(raw);
 }
 
 function isSane(r: MealReading): boolean {
@@ -123,79 +128,6 @@ function isSane(r: MealReading): boolean {
   const sum = r.items.reduce((s, x) => s + (x.calories || 0), 0);
   if (sum > 0 && Math.abs(cal - sum) / Math.max(cal, sum) > 0.5) return false;
   return true;
-}
-
-function median(nums: number[]): number {
-  const arr = [...nums].sort((a, b) => a - b);
-  const n = arr.length;
-  if (n === 0) return 0;
-  if (n % 2) return arr[(n - 1) / 2];
-  return Math.round((arr[n / 2 - 1] + arr[n / 2]) / 2);
-}
-
-function mergeReadings(readings: MealReading[]): MealReading {
-  if (readings.length === 1) return readings[0];
-
-  const itemCounts = readings.map((r) => r.items?.length ?? 0);
-  const frameIdx = itemCounts.indexOf(Math.max(...itemCounts));
-  const frame = readings[frameIdx];
-
-  const mergedItems = (frame.items ?? []).map((frameIt) => {
-    const same: typeof frameIt[] = [frameIt];
-    for (let i = 0; i < readings.length; i++) {
-      if (i === frameIdx) continue;
-      const match = readings[i].items?.find(
-        (x) => x.name.trim().toLowerCase() === frameIt.name.trim().toLowerCase(),
-      );
-      if (match) same.push(match);
-    }
-    return {
-      name: frameIt.name,
-      portion: frameIt.portion,
-      calories: median(same.map((x) => x.calories)),
-      protein: median(same.map((x) => x.protein)),
-      carb: median(same.map((x) => x.carb)),
-      fat: median(same.map((x) => x.fat)),
-    };
-  });
-
-  return {
-    title: frame.title,
-    items: mergedItems,
-    totalCalories: median(readings.map((r) => r.totalCalories || 0)),
-    totalProtein: median(readings.map((r) => r.totalProtein || 0)),
-    totalCarb: median(readings.map((r) => r.totalCarb || 0)),
-    totalFat: median(readings.map((r) => r.totalFat || 0)),
-  };
-}
-
-/**
- * 讀多張照片，回傳每張獨立的 MealReading 結果。
- * @param photos base64 陣列
- * @param options 同 readMealFromBase64；每張可獨立 temperature
- * @param sequential 低負擔模式下序列執行，預設 false（並行）
- */
-export async function readMealsFromMultiplePhotos(
-  photos: string[],
-  options: MealParseOptions = {},
-  sequential: boolean = false,
-): Promise<MealReading[]> {
-  if (sequential) {
-    const out: MealReading[] = [];
-    for (const p of photos) {
-      try {
-        const r = await readMealFromBase64(p, options);
-        out.push(r);
-      } catch (e) {
-        console.warn('Photo OCR failed', e);
-      }
-    }
-    return out;
-  }
-  const results = await Promise.allSettled(photos.map((p) => readMealFromBase64(p, options)));
-  return results
-    .filter((r): r is PromiseFulfilledResult<MealReading> => r.status === 'fulfilled')
-    .map((r) => r.value);
 }
 
 export type MergeMode = 'sameMeal' | 'multipleMeals';
@@ -260,6 +192,95 @@ export function mergeMealReadings(readings: MealReading[], mode: MergeMode = 'sa
   };
 }
 
+async function verifyRead(
+  base64: string,
+  preliminary: MealReading,
+  options: InternalOptions,
+): Promise<MealReading> {
+  const parts: string[] = [
+    '以下是初步判讀結果，請依系統指示複核（漏項＋份量），回傳修正後的完整 JSON：',
+    JSON.stringify(preliminary),
+  ];
+  const timeHint = mealTimeHint(options.capturedAt);
+  if (timeHint) parts.push(timeHint);
+  if (options.memoryHint) parts.push(options.memoryHint);
+  if (options.palmRef) parts.push(buildPalmRefHint(options.palmRef));
+  const hint = options.extraHint?.trim();
+  if (hint) parts.push(`使用者補充：${hint}`);
+
+  const raw = await callVisionJSON({
+    systemPrompt: VERIFY_PROMPT,
+    userPrompt: parts.join('\n'),
+    base64,
+    temperature: 0.1,
+    maxTokens: 2500,
+  });
+  const parsed = parseMealJson(raw);
+  if (!isSane(parsed)) throw new Error('複核結果不合理');
+  return sanityCheck(parsed);
+}
+
+export type TwoPhaseResult = {
+  /** 初判（已過 sanityCheck），拿到就能直接顯示 */
+  preliminary: MealReading;
+  /** 背景複核：skipVerify 或複核失敗時 resolve null（永不 reject） */
+  verification: Promise<MealReading | null>;
+};
+
+/**
+ * 兩段式判讀：1 次初判立即回 + 1 次針對性複核（漏項＋份量）背景跑。
+ * 取代舊「3 次取中位數」：首結果快 2~3 倍、總成本 −1/3。
+ */
+export async function readMealTwoPhase(
+  base64: string,
+  options: MealParseOptions = {},
+): Promise<TwoPhaseResult> {
+  const memoryHint = await getMemoryHint(10);
+  const t0 = Date.now();
+
+  let preliminary: MealReading;
+  try {
+    const first = await singleRead(base64, { ...options, memoryHint, temperature: 0.1 });
+    if (!isSane(first)) throw new Error('AI 判讀結果不合理，請再試一次');
+    preliminary = first;
+  } catch (firstErr: any) {
+    // 同舊版 fallback：換個 temperature 再試一次，仍失敗就把第一次錯誤丟出去
+    let retry: MealReading;
+    try {
+      retry = await singleRead(base64, { ...options, memoryHint, temperature: 0.4 });
+    } catch {
+      throw new Error(firstErr?.message ?? 'AI 判讀失敗');
+    }
+    if (!isSane(retry)) throw new Error('AI 判讀結果不合理，請再試一次');
+    preliminary = retry;
+  }
+  preliminary = sanityCheck(preliminary);
+  if (__DEV__) console.log(`[ai] 初判完成 ${Date.now() - t0}ms`);
+
+  const verification: Promise<MealReading | null> = options.skipVerify
+    ? Promise.resolve(null)
+    : verifyRead(base64, preliminary, { ...options, memoryHint })
+        .then((v) => {
+          if (__DEV__) console.log(`[ai] 複核完成 ${Date.now() - t0}ms`);
+          return v;
+        })
+        .catch((e) => {
+          console.warn('[ai] 複核失敗（保留初判）', e?.message ?? e);
+          return null;
+        });
+
+  return { preliminary, verification };
+}
+
+/** 相容包裝：單次判讀（含一次重試）。現有呼叫端：app/me/food-library/new.tsx */
+export async function readMealFromBase64(
+  base64: string,
+  options: MealParseOptions = {},
+): Promise<MealReading> {
+  const { preliminary } = await readMealTwoPhase(base64, { ...options, skipVerify: true });
+  return preliminary;
+}
+
 // ===== 營養標籤識別（plan v7）=====
 
 const NUTRITION_LABEL_PROMPT = `你是營養標籤判讀助手。使用者上傳的是包裝食品的「營養標示」表格照片（小方框內含每份/每100g 的數據）。
@@ -312,43 +333,6 @@ export async function readNutritionLabelFromBase64(base64: string): Promise<Meal
     totalCarb: parsed.totalCarb ?? 0,
     totalFat: parsed.totalFat ?? 0,
   };
-}
-
-export async function readMealFromBase64(base64: string, options: MealParseOptions = {}): Promise<MealReading> {
-  const memoryHint = await getMemoryHint(10);
-
-  const runs = options.economy ? 1 : 3;
-  const seeds: number[] = runs === 1 ? [0.1] : [0.1, 0.3, 0.2];
-
-  let results: MealReading[] = [];
-  const errors: string[] = [];
-
-  await Promise.all(
-    seeds.map(async (temp) => {
-      try {
-        const r = await singleRead(base64, { ...options, memoryHint, temperature: temp });
-        if (isSane(r)) results.push(r);
-      } catch (e: any) {
-        errors.push(e?.message ?? String(e));
-      }
-    }),
-  );
-
-  if (results.length === 0 && errors.length > 0) {
-    try {
-      const retry = await singleRead(base64, { ...options, memoryHint, temperature: 0.4 });
-      if (isSane(retry)) results.push(retry);
-    } catch (e: any) {
-      throw new Error(errors[0] || e?.message || 'AI 判讀失敗');
-    }
-  }
-
-  if (results.length === 0) {
-    throw new Error(errors[0] || 'AI 判讀結果不合理，請再試一次');
-  }
-
-  const merged = mergeReadings(results);
-  return sanityCheck(merged);
 }
 
 export type InBodyReading = {

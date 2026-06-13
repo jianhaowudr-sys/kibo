@@ -1,11 +1,12 @@
 import { View, Text, ScrollView, Pressable, TextInput, Alert, Image, ActivityIndicator, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
-import { readMealFromBase64, readMealsFromMultiplePhotos, mergeMealReadings, readNutritionLabelFromBase64, type MealReading, type MergeMode } from '@/lib/ocr';
+import { readMealTwoPhase, mergeMealReadings, readNutritionLabelFromBase64, type MealReading, type MergeMode, type TwoPhaseResult } from '@/lib/ocr';
+import { diffReadings, snapshotOf, mergeVerifiedIntoForm, formatDiffSummary, type MealDiff, type AppliedSnapshot } from '@/lib/meal_verify';
 import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { compressForVision } from '@/lib/image_compress';
 import { recordMealCorrection } from '@/lib/memory';
@@ -167,6 +168,14 @@ export default function NewMeal() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [includePalmRef, setIncludePalmRef] = useState(false);
   const [photoMode, setPhotoMode] = useState<'meal' | 'label'>('meal');
+  type VerifyState = 'idle' | 'verifying' | 'verified' | 'diff';
+  const [verifyState, setVerifyState] = useState<VerifyState>('idle');
+  const [pendingVerified, setPendingVerified] = useState<MealReading | null>(null);
+  const [pendingVerifiedList, setPendingVerifiedList] = useState<MealReading[] | null>(null);
+  const [verifyDiff, setVerifyDiff] = useState<MealDiff | null>(null);
+  const appliedSnapshot = useRef<AppliedSnapshot | null>(null);
+  // 每輪判讀遞增；照片增刪/模式切換也遞增，讓過期的背景複核結果自動作廢
+  const parseSeq = useRef(0);
   const lowPower = useLowPower();
   const healthSettings = useAppStore((s) => s.healthSettings);
 
@@ -254,8 +263,10 @@ export default function NewMeal() {
     );
     setPhotos((prev) => [...prev, ...newSlots]);
     // 加新照片就清掉之前的 AI 結果（避免混淆）
+    parseSeq.current++;
     setAiParsed(false);
     setPerPhotoReadings([]);
+    setVerifyState('idle');
   };
 
   const onChoosePhoto = () => {
@@ -269,8 +280,10 @@ export default function NewMeal() {
   const removePhoto = (idx: number) => {
     haptic.tapLight();
     setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    parseSeq.current++;
     setPerPhotoReadings([]);
     setAiParsed(false);
+    setVerifyState('idle');
   };
 
   const onAIParse = async () => {
@@ -288,12 +301,17 @@ export default function NewMeal() {
     }
 
     setOcrLoading(true);
+    setVerifyState('idle');
+    setPendingVerified(null);
+    setPendingVerifiedList(null);
+    setVerifyDiff(null);
+    const seq = ++parseSeq.current;
     haptic.tapMedium();
     const palmRef = includePalmRef
       ? { lengthCm: healthSettings.body.palmLengthCm, widthCm: healthSettings.body.palmWidthCm }
       : undefined;
     try {
-      // 營養標模式：讀取包裝營養表
+      // 營養標模式：讀取包裝營養表（單次，不複核）
       if (photoMode === 'label') {
         const reading = await readNutritionLabelFromBase64(photos[0].base64);
         setPerPhotoReadings([reading]);
@@ -303,26 +321,63 @@ export default function NewMeal() {
       }
 
       if (photos.length === 1) {
-        const reading = await readMealFromBase64(photos[0].base64, {
+        const { preliminary, verification } = await readMealTwoPhase(photos[0].base64, {
           capturedAt: photos[0].takenAt ?? Date.now(),
           palmRef,
+          skipVerify: lowPower, // 低耗模式維持單次、不複核
         });
-        setPerPhotoReadings([reading]);
-        apply(reading);
+        setPerPhotoReadings([preliminary]);
+        apply(preliminary);
+        if (!lowPower) {
+          setVerifyState('verifying');
+          verification.then((verified) => {
+            if (seq !== parseSeq.current) return; // 過期結果作廢
+            if (!verified) {
+              setVerifyState('idle'); // 複核失敗：保留初判、不打擾
+              return;
+            }
+            handleVerified(preliminary, verified, [verified]);
+          });
+        }
       } else {
-        const readings = await readMealsFromMultiplePhotos(
-          photos.map((p) => p.base64),
-          { palmRef },
-          lowPower, // 低負擔模式 → 序列
-        );
-        setPerPhotoReadings(readings);
-        if (readings.length === 0) {
+        // 多照片：每張獨立兩段式。低耗 → 序列且跳過複核（同舊行為的單次序列）
+        let results: TwoPhaseResult[] = [];
+        if (lowPower) {
+          for (const p of photos) {
+            try {
+              results.push(await readMealTwoPhase(p.base64, { palmRef, skipVerify: true }));
+            } catch (e) {
+              console.warn('Photo read failed', e);
+            }
+          }
+        } else {
+          const settled = await Promise.allSettled(photos.map((p) => readMealTwoPhase(p.base64, { palmRef })));
+          results = settled
+            .filter((s): s is PromiseFulfilledResult<TwoPhaseResult> => s.status === 'fulfilled')
+            .map((s) => s.value);
+        }
+        const prelims = results.map((r) => r.preliminary);
+        setPerPhotoReadings(prelims);
+        if (prelims.length === 0) {
           Alert.alert('判讀失敗', '所有照片都判讀失敗，請手動輸入');
           return;
         }
         // 同一餐 → 取平均合併成 1 份；不同餐 → 顯示總和供使用者預覽（儲存時拆 N 餐）
-        const merged = mergeMealReadings(readings, mergeMode);
+        const merged = mergeMealReadings(prelims, mergeMode);
         apply(merged);
+        if (!lowPower) {
+          setVerifyState('verifying');
+          Promise.all(results.map((r) => r.verification)).then((vs) => {
+            if (seq !== parseSeq.current) return;
+            if (vs.every((v) => v === null)) {
+              setVerifyState('idle');
+              return;
+            }
+            const verifiedList = vs.map((v, i) => v ?? prelims[i]); // 個別複核失敗 → 沿用該張初判
+            const mergedVerified = mergeMealReadings(verifiedList, mergeMode);
+            handleVerified(merged, mergedVerified, verifiedList);
+          });
+        }
       }
       haptic.success();
     } catch (e: any) {
@@ -334,14 +389,67 @@ export default function NewMeal() {
   };
 
   const apply = (r: MealReading) => {
-    setTitle(r.title ?? '');
-    setItems(r.items ?? []);
-    setAiOriginalItems(r.items ?? []);
-    setCalories(String(r.totalCalories));
-    setProtein(String(r.totalProtein));
-    setCarb(String(r.totalCarb));
-    setFat(String(r.totalFat));
+    const next = {
+      title: r.title ?? '',
+      items: r.items ?? [],
+      calories: String(r.totalCalories),
+      protein: String(r.totalProtein),
+      carb: String(r.totalCarb),
+      fat: String(r.totalFat),
+    };
+    setTitle(next.title);
+    setItems(next.items);
+    setAiOriginalItems(next.items);
+    setCalories(next.calories);
+    setProtein(next.protein);
+    setCarb(next.carb);
+    setFat(next.fat);
+    appliedSnapshot.current = snapshotOf(next);
     setAiParsed(true);
+  };
+
+  const handleVerified = (prelim: MealReading, verified: MealReading, verifiedList: MealReading[]) => {
+    const diff = diffReadings(prelim, verified);
+    if (__DEV__) console.log(`[ai] 複核差異 ${diff.calorieDeltaPct}%；新增 ${diff.addedItems.length}、移除 ${diff.removedItems.length}`);
+    if (!diff.significant) {
+      setVerifyState('verified');
+      return;
+    }
+    setPendingVerified(verified);
+    setPendingVerifiedList(verifiedList);
+    setVerifyDiff(diff);
+    setVerifyState('diff');
+  };
+
+  const applyVerifiedFix = () => {
+    if (!pendingVerified || !appliedSnapshot.current) return;
+    haptic.tapMedium();
+    const next = mergeVerifiedIntoForm(
+      { title, items, calories, protein, carb, fat },
+      appliedSnapshot.current,
+      pendingVerified,
+    );
+    setTitle(next.title);
+    setItems(next.items);
+    setCalories(next.calories);
+    setProtein(next.protein);
+    setCarb(next.carb);
+    setFat(next.fat);
+    setAiOriginalItems(next.items); // 修正後成為 AI 基準，儲存時 memory 學「使用者 vs 複核版」差異
+    appliedSnapshot.current = snapshotOf(next);
+    if (pendingVerifiedList) setPerPhotoReadings(pendingVerifiedList); // multipleMeals 分筆儲存用同步更新
+    setPendingVerified(null);
+    setPendingVerifiedList(null);
+    setVerifyDiff(null);
+    setVerifyState('verified');
+  };
+
+  const dismissVerifiedFix = () => {
+    haptic.tapLight();
+    setPendingVerified(null);
+    setPendingVerifiedList(null);
+    setVerifyDiff(null);
+    setVerifyState('verified');
   };
 
   const recalcFromItems = (list: MealItem[]) => {
@@ -528,7 +636,7 @@ export default function NewMeal() {
             <Text className="text-kibo-text font-semibold mb-2 text-sm">這幾張照片是…</Text>
             <View className="flex-row gap-2 mb-2">
               <Pressable
-                onPress={() => { haptic.tapLight(); setMergeMode('sameMeal'); setAiParsed(false); }}
+                onPress={() => { haptic.tapLight(); setMergeMode('sameMeal'); parseSeq.current++; setAiParsed(false); setVerifyState('idle'); }}
                 className={`flex-1 py-3 rounded-xl items-center ${mergeMode === 'sameMeal' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
               >
                 <Text className={`font-semibold text-sm ${mergeMode === 'sameMeal' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
@@ -539,7 +647,7 @@ export default function NewMeal() {
                 </Text>
               </Pressable>
               <Pressable
-                onPress={() => { haptic.tapLight(); setMergeMode('multipleMeals'); setAiParsed(false); }}
+                onPress={() => { haptic.tapLight(); setMergeMode('multipleMeals'); parseSeq.current++; setAiParsed(false); setVerifyState('idle'); }}
                 className={`flex-1 py-3 rounded-xl items-center ${mergeMode === 'multipleMeals' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
               >
                 <Text className={`font-semibold text-sm ${mergeMode === 'multipleMeals' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
@@ -622,7 +730,7 @@ export default function NewMeal() {
               <>
                 <ActivityIndicator color="#F1F5F9" />
                 <Text className="text-kibo-text font-bold">
-                  {photoMode === 'label' ? '讀取營養標中...' : `AI 估算中... ${photos.length > 1 ? `(${photos.length} 張${lowPower ? ' 序列' : ' 並行'})` : ''}`}
+                  {photoMode === 'label' ? '讀取營養標中...' : `AI 初判中... ${photos.length > 1 ? `(${photos.length} 張${lowPower ? ' 序列' : ' 並行'})` : ''}`}
                 </Text>
               </>
             ) : (
@@ -634,6 +742,32 @@ export default function NewMeal() {
             )}
           </Pressable>
           </>
+        )}
+
+        {aiParsed && verifyState === 'verifying' && (
+          <View className="flex-row items-center gap-2 mb-3">
+            <ActivityIndicator size="small" color={palette.mute} />
+            <Text className="text-kibo-mute text-xs">AI 複核中…（結果可先用，有差異會提示）</Text>
+          </View>
+        )}
+        {aiParsed && verifyState === 'verified' && (
+          <Text className="text-kibo-success text-xs mb-3">✓ 已複核</Text>
+        )}
+        {aiParsed && verifyState === 'diff' && verifyDiff && pendingVerified && (
+          <View className="bg-kibo-surface border border-kibo-accent rounded-2xl p-3 mb-3">
+            <Text className="text-kibo-text text-sm font-semibold mb-1">🔍 複核發現差異</Text>
+            <Text className="text-kibo-mute text-xs mb-2">
+              {formatDiffSummary(Number(calories) || 0, pendingVerified, verifyDiff)}
+            </Text>
+            <View className="flex-row gap-2">
+              <Pressable onPress={applyVerifiedFix} className="flex-1 bg-kibo-primary rounded-xl py-2">
+                <Text className="text-kibo-bg text-center text-sm font-bold">套用修正</Text>
+              </Pressable>
+              <Pressable onPress={dismissVerifiedFix} className="flex-1 bg-kibo-card rounded-xl py-2">
+                <Text className="text-kibo-text text-center text-sm">保留原值</Text>
+              </Pressable>
+            </View>
+          </View>
         )}
 
         <FoodPickerModal
