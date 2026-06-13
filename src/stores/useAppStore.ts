@@ -347,14 +347,6 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       console.warn('Auto freeze failed', e);
     }
 
-    // 每天首次 bootstrap 生成寵物訊息（同天不重複，pet_messages 內部會去重）
-    try {
-      const { generateDailyMessages } = await import('@/lib/pet_messages');
-      await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
-    } catch (e) {
-      console.warn('Pet messages generate failed', e);
-    }
-
     await Promise.all([get().refreshHealth(), get().refreshCustomFoods()]);
   },
 

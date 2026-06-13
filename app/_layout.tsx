@@ -7,15 +7,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, ActivityIndicator, useColorScheme as useSystemColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
-import { ensureSchema } from '@/db/migrate';
 import { useAppStore } from '@/stores/useAppStore';
-import { useTutorialStore } from '@/stores/useTutorialStore';
 import { THEME_COLORS, type ThemeMode, type ResolvedTheme } from '@/lib/theme';
 import { PIXEL_COLORS, PIXEL_VARS } from '@/lib/palette';
 import { UndoToast } from '@/components/common/UndoToast';
 import { SurpriseBoxModal } from '@/components/dashboard/SurpriseBoxModal';
 import { setupNotificationActionHandler } from '@/lib/reminders';
-import { perfStart } from '@/lib/perf';
+import { runCriticalStartup, runBackgroundStartup } from '@/lib/startup';
 
 function SurpriseBoxBridge() {
   const reward = useAppStore((s) => s.pendingReward);
@@ -31,15 +29,6 @@ function resolve(mode: ThemeMode, system: 'light' | 'dark' | null | undefined): 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const bootstrap = useAppStore((s) => s.bootstrap);
-  const loadThemeMode = useAppStore((s) => s.loadThemeMode);
-  const loadThemeStyle = useAppStore((s) => s.loadThemeStyle);
-  const loadLowPowerMode = useAppStore((s) => s.loadLowPowerMode);
-  const loadCalendarViewMode = useAppStore((s) => s.loadCalendarViewMode);
-  const loadStatsLayoutJson = useAppStore((s) => s.loadStatsLayoutJson);
-  const loadOnboardingPetName = useAppStore((s) => s.loadOnboardingPetName);
-  const loadAuthSession = useAppStore((s) => s.loadAuthSession);
-  const hydrateTutorial = useTutorialStore((s) => s.hydrate);
   const themeMode = useAppStore((s) => s.themeMode);
   const themeStyle = useAppStore((s) => s.themeStyle);
   const systemScheme = useSystemColorScheme();
@@ -71,24 +60,8 @@ export default function RootLayout() {
   useEffect(() => {
     (async () => {
       try {
-        const endTotal = perfStart('startup:total-to-ready');
-        const endSchema = perfStart('startup:schema');
-        await ensureSchema();
-        endSchema();
-        const endBoot = perfStart('startup:bootstrap');
-        await bootstrap();
-        endBoot();
-        const endRest = perfStart('startup:prefs+tutorial+auth');
-        await loadThemeMode();
-        await loadThemeStyle();
-        await loadLowPowerMode();
-        await loadCalendarViewMode();
-        await loadStatsLayoutJson();
-        await loadOnboardingPetName();
-        await hydrateTutorial();
-        await loadAuthSession();
-        endRest();
-        // 第一次啟動 → 進 onboarding
+        await runCriticalStartup();
+        // 第一次啟動 → 進 onboarding（依賴 bootstrap 的 user，須在關鍵路徑完成後判斷）
         const { user } = useAppStore.getState();
         if (user && !user.onboardingCompletedAt) {
           // 延遲一點讓 Stack 準備好
@@ -99,13 +72,13 @@ export default function RootLayout() {
             } catch {}
           }, 500);
         }
-        endTotal();
         setReady(true);
+        runBackgroundStartup();
       } catch (e: any) {
         setErr(e?.message ?? String(e));
       }
     })();
-  }, [bootstrap, loadThemeMode, loadThemeStyle, loadAuthSession]);
+  }, []);
 
   if (err) {
     return (
