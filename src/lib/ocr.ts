@@ -77,7 +77,7 @@ type InternalOptions = MealParseOptions & {
 };
 
 async function singleRead(base64: string, options: InternalOptions): Promise<MealReading> {
-  const parts: string[] = ['請依照系統指示的三步思考流程（辨識 → 估份量 → 估營養素），判讀這一餐。'];
+  const parts: string[] = ['請依照系統指示的四步判讀流程（辨識 → 估份量 → 估營養素 → 自我檢查），判讀這一餐。'];
   const timeHint = mealTimeHint(options.capturedAt);
   if (timeHint) parts.push(timeHint);
   if (options.memoryHint) parts.push(options.memoryHint);

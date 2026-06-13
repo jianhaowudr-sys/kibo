@@ -118,5 +118,6 @@ ${REF_TABLE}
 export function buildPalmRefHint(palmRef: { lengthCm: number; widthCm: number }): string {
   return `## 比例尺參照
 使用者的手掌張開時：長 ${palmRef.lengthCm} cm（中指尖到手腕）、寬 ${palmRef.widthCm} cm（四指根橫寬不含拇指）。
-若照片中出現平放且五指張開的手掌，請優先用此 calibrate 食物的真實尺寸再估份量；若手掌姿勢非五指張開或不平放（如握拳、側立、捏東西），可忽略此參照。`;
+若照片中出現平放且五指張開的手掌，請優先用此 calibrate 食物的真實尺寸再估份量；若手掌姿勢非五指張開或不平放（如握拳、側立、捏東西），可忽略此參照。
+⚠️ 有比例尺時，請以食物相對手掌的實際尺寸為準，不要套用「便當盒一定 700~800g」這類預設先驗。`;
 }
