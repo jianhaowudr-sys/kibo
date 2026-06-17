@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import Svg, { Rect } from 'react-native-svg';
 import { View } from 'react-native';
 
@@ -31,34 +31,39 @@ type Props = {
   flipY?: boolean;
 };
 
-export function PixelArt({ data, colors, scale = 4, width, flipY }: Props) {
-  if (!data || data.length === 0) return null;
-  const rows = data.length;
-  const cols = data[0].length;
-  const finalScale = width ? Math.floor(width / cols) : scale;
+export const PixelArt = React.memo(function PixelArt({ data, colors, scale = 4, width, flipY }: Props) {
+  const rows = data?.length ?? 0;
+  const cols = rows > 0 ? data[0].length : 0;
+  const finalScale = width && cols > 0 ? Math.floor(width / cols) : scale;
   const w = cols * finalScale;
   const h = rows * finalScale;
 
-  const rects: React.ReactNode[] = [];
-  for (let y = 0; y < rows; y++) {
-    for (let x = 0; x < cols; x++) {
-      const c = data[y][x];
-      if (!c || c === 0) continue;
-      const fill = colors[c];
-      if (!fill) continue;
-      const py = flipY ? rows - 1 - y : y;
-      rects.push(
-        <Rect
-          key={`${x}-${y}`}
-          x={x * finalScale}
-          y={py * finalScale}
-          width={finalScale}
-          height={finalScale}
-          fill={fill}
-        />
-      );
+  const rects = useMemo(() => {
+    if (rows === 0 || cols === 0) return [];
+    const out: React.ReactNode[] = [];
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const c = data[y][x];
+        if (!c || c === 0) continue;
+        const fill = colors[c];
+        if (!fill) continue;
+        const py = flipY ? rows - 1 - y : y;
+        out.push(
+          <Rect
+            key={`${x}-${y}`}
+            x={x * finalScale}
+            y={py * finalScale}
+            width={finalScale}
+            height={finalScale}
+            fill={fill}
+          />
+        );
+      }
     }
-  }
+    return out;
+  }, [data, colors, finalScale, flipY, rows, cols]);
+
+  if (rows === 0) return null;
 
   return (
     <View style={{ width: w, height: h }}>
@@ -67,6 +72,6 @@ export function PixelArt({ data, colors, scale = 4, width, flipY }: Props) {
       </Svg>
     </View>
   );
-}
+});
 
 export default PixelArt;

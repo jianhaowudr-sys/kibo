@@ -117,13 +117,20 @@ export default function HomeScreen() {
   };
   const cardOrder = (id: string) => layout.cards.find((x) => x.id === id)?.order ?? 999;
   // 「健康列」整組順序 = health-* 中最低的 order
-  const healthOrder = Math.min(
-    ...['health-water', 'health-bowel', 'health-sleep', 'health-period']
-      .filter(isCardVisible)
-      .map(cardOrder),
-    999,
+  const healthOrder = useMemo(
+    () =>
+      Math.min(
+        ...['health-water', 'health-bowel', 'health-sleep', 'health-period']
+          .filter(isCardVisible)
+          .map(cardOrder),
+        999,
+      ),
+    [layout],
   );
-  const anyHealthVisible = ['health-water', 'health-bowel', 'health-sleep', 'health-period'].some(isCardVisible);
+  const anyHealthVisible = useMemo(
+    () => ['health-water', 'health-bowel', 'health-sleep', 'health-period'].some(isCardVisible),
+    [layout],
+  );
 
   useEffect(() => {
     if (!settings.sleep.wakePrompt.enabled) return;

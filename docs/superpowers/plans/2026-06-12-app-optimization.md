@@ -1369,10 +1369,15 @@ git commit -m "docs: 優化驗收數據與回歸結果"
 
 | 處理 | 位置 | 說明 |
 |---|---|---|
-| — | — | — |
+| useMemo（rects 陣列） | `src/components/common/PixelArt.tsx:43` | N×N 像素 Rect 節點每次 render 重建；改以 `useMemo` 緩存，deps `[data, colors, finalScale, flipY, rows, cols]` |
+| React.memo（元件） | `src/components/common/PixelArt.tsx:34` | 包 `React.memo` 防止父元件無關 re-render 造成 PixelArt 重繪 |
+| useMemo（healthOrder） | `app/(tabs)/index.tsx:120` | `healthOrder` 每次 render 對 4 個 health card 做 `.filter(isCardVisible).map(cardOrder)`；改以 `useMemo` 緩存，dep `[layout]` |
+| useMemo（anyHealthVisible） | `app/(tabs)/index.tsx:130` | `anyHealthVisible` 每次 render 做 `.some(isCardVisible)`；改以 `useMemo` 緩存，dep `[layout]` |
 
 ## 附錄：超出上限的發現（後續建議）
 
 | 位置 | 問題 | 建議 |
 |---|---|---|
-| — | — | — |
+| `src/components/pet/PixelSprite.tsx` | `React.memo` 包裹有限效益：`PetHeroBar` 每 render 重建 `frames` 陣列使 memo 失效；`PetScene` 已自行 `useMemo` frames 可受益。 | 在 `PetHeroBar` 把 `frames` 計算也包進 `useMemo`，再對 `PixelSprite` 加 `React.memo`。 |
+| `app/(tabs)/routines.tsx:34-50` | `loadDetails` 為 async 函數，計算結果儲入 state，不在同步 render 路徑上；無 `useMemo` 機會，但每次 `routines`/`exercises` 變化都觸發一次 DB 讀取。 | 若課表數量龐大，可考慮在 repo 層加快取；現況無需改動。 |
+| `app/(tabs)/index.tsx:114-118` | `isCardVisible` / `cardOrder` 為每 render 重建的 inline 函數，被多處 JSX 條件判斷直接呼叫（共 9 次）。 | 可用 `useCallback` 或將全部 card 可視性抽為一個 `useMemo` Map，再由 JSX 查表。超出本次上限。 |
