@@ -131,3 +131,20 @@ export type WeeklyReviewData = {
 - 週首可設定（週一/週日）。
 - 更多指標（體重變化、PR、trinity 完整度、EXP）。
 - 把 `gatherActivity`（每日訊息）的 meal 簡化也 swap 成 `listMealsBetween`（本輪只新增 helper，不改既有行為）。
+
+## 驗收狀態（2026-06-17 實作完成）
+
+**已自動驗證（本機）：**
+- `npx tsc --noEmit` 全綠（每個 task 完成時皆通過）。
+- `npx -y tsx scripts/verify_weekly_review.ts` → ALL PASS (14 checks)：`computeWeeklySummary`（過濾/平均/除零守衛）＋ `pickHighlight`（每層規則 + 規則順序 + fallback）。
+
+**實作摘要（8 commits，9dbd368…a29a745）：**
+- 純邏輯抽零 import 的 `weekly_review_core.ts`（可 node 斷言）；I/O 與生成在 `weekly_review.ts`。
+- 審查意見已採納：水量顯示統一 1 位小數（核心與渲染一致）；斷言改精確比對＋加規則順序測試；去重改 `category` 限定查詢、訓練改 `listWorkoutsBetween` 範圍查詢（去除 fetch-N-then-filter 隱含上限）；渲染 fallback 守衛加數值欄位檢查。
+
+**待使用者在實機驗收：**
+- 生成：造上週資料（訓練/飲食/睡眠/喝水任一）→ 跨到新週首開 App → 收到 📊 weekly 訊息。
+- teaser：首頁寵物訊息卡顯示 `📊 + 標題`；點進訊息頁顯示 6 磚（訓練/睡眠均/熱量均/蛋白質均/喝水均/飲食天數）＋週期間。
+- 去重：同週重開不重生。空週：上週全無活動不生。
+- 亮點：標題隨數據變。fallback：triggerData 壞掉只顯示標題、不崩。
+- 既有每日訊息（greeting/concern/celebration/reminder）不受影響。
