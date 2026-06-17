@@ -528,7 +528,7 @@ export function WeeklyReviewBlock({ message }: { message: PetMessage }) {
     );
   }
 
-  const waterL = Math.round(data.waterDailyAvgMl / 100) / 10;
+  const waterL = (data.waterDailyAvgMl / 1000).toFixed(1); // 與 pickHighlight 同步：統一 1 位小數
   const row1 = [
     { label: '訓練', value: `${data.workoutCount} 次`, color: palette.success },
     { label: '睡眠均', value: `${data.sleepHoursAvg}h`, color: palette.primary },
