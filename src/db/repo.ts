@@ -287,6 +287,14 @@ export async function listWorkouts(userId: number, limit = 50): Promise<Workout[
   return rs.map(rowToWorkout);
 }
 
+export async function listWorkoutsBetween(userId: number, fromMs: number, toMs: number): Promise<Workout[]> {
+  const rs = await sqliteDb.getAllAsync<Row>(
+    'SELECT * FROM workouts WHERE user_id = ? AND ended_at IS NOT NULL AND started_at >= ? AND started_at < ? ORDER BY started_at DESC',
+    [userId, fromMs, toMs],
+  );
+  return rs.map(rowToWorkout);
+}
+
 export async function addSet(data: {
   workoutId: number;
   exerciseId: number;

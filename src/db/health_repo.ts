@@ -603,6 +603,14 @@ export async function listPetMessages(userId: number, limit: number = 30): Promi
   return rows.map(ROW2PETMSG);
 }
 
+export async function listPetMessagesByCategory(userId: number, category: string, limit: number = 20): Promise<PetMessage[]> {
+  const rows = await sqliteDb.getAllAsync<any>(
+    `SELECT * FROM pet_messages WHERE user_id = ? AND category = ? ORDER BY generated_at DESC LIMIT ?`,
+    [userId, category, limit],
+  );
+  return rows.map(ROW2PETMSG);
+}
+
 export async function markPetMessageRead(id: number): Promise<void> {
   await sqliteDb.runAsync(`UPDATE pet_messages SET read = 1 WHERE id = ?`, [id]);
 }

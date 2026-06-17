@@ -18,12 +18,8 @@ export async function gatherWeeklyReview(userId: number, weekStart: Date, weekEn
   const startMs = +weekStart;
   const nextWeekStartMs = +addDays(weekStart, 7); // 半開區間上界
 
-  // 訓練：撈近期再 filter 到該週
-  const recentWorkouts = await repo.listWorkouts(userId, 100);
-  const weekWorkouts = recentWorkouts.filter((w) => {
-    const t = +new Date(w.startedAt);
-    return t >= startMs && t < nextWeekStartMs;
-  });
+  // 訓練：ms 半開區間（避免 fetch-N-then-filter 的隱含上限）
+  const weekWorkouts = await repo.listWorkoutsBetween(userId, startMs, nextWeekStartMs);
   const workoutDayKeys = weekWorkouts.map((w) => dateKey(w.startedAt));
 
   // 飲食：ms 半開區間
@@ -66,10 +62,10 @@ export async function maybeGenerateWeeklyReview(userId: number, pet: Pet | null)
     const weekEnd = endOfWeek(weekStart, WEEK_OPTS);
     const weekStartKey = format(weekStart, 'yyyy-MM-dd');
 
-    // 去重：已有該週 weekly 訊息 → 跳過
-    const existing = await healthRepo.listPetMessages(userId, 50);
-    const dupe = existing.some((m) => {
-      if (m.category !== 'weekly' || !m.triggerData) return false;
+    // 去重：已有該週 weekly 訊息 → 跳過（category 限定查詢，不受每日/PR 訊息量影響）
+    const existingWeekly = await healthRepo.listPetMessagesByCategory(userId, 'weekly', 8);
+    const dupe = existingWeekly.some((m) => {
+      if (!m.triggerData) return false;
       try {
         return (JSON.parse(m.triggerData) as WeeklyReviewData).weekStartKey === weekStartKey;
       } catch {
