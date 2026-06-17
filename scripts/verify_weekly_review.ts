@@ -53,9 +53,10 @@ const dataFor = (over: Partial<ReturnType<typeof computeWeeklySummary>>) =>
 
 check('亮點: 訓練天 ≥5', pickHighlight(dataFor({ workoutDays: 5, workoutCount: 6 })) === '這週訓練 5 天，超猛的！');
 check('亮點: 訓練 ≥3 次', pickHighlight(dataFor({ workoutCount: 3 })) === '這週練了 3 次，很穩！');
-check('亮點: 睡眠', pickHighlight(dataFor({ sleepNights: 4, sleepHoursAvg: 7 })).includes('作息顧得很好'));
-check('亮點: 飲食自律', pickHighlight(dataFor({ mealDays: 6 })).includes('超自律'));
-check('亮點: 喝水達標', pickHighlight(dataFor({ waterDailyAvgMl: 2000 })).includes('喝水達標'));
+check('亮點: 睡眠', pickHighlight(dataFor({ sleepNights: 4, sleepHoursAvg: 7 })) === '睡眠均 7h，作息顧得很好～');
+check('亮點: 飲食自律', pickHighlight(dataFor({ mealDays: 6 })) === '飲食 6 天都有記，超自律！');
+check('亮點: 喝水達標', pickHighlight(dataFor({ waterDailyAvgMl: 2000 })) === '喝水達標，2.0 L／天！');
 check('亮點: fallback', pickHighlight(dataFor({ mealDays: 1 })) === '這週有動有記，繼續保持！');
+check('亮點: 規則順序（訓練次數優先於飲食）', pickHighlight(dataFor({ workoutDays: 4, workoutCount: 5, mealDays: 6 })) === '這週練了 5 次，很穩！');
 
 console.log(`ALL PASS (${passed} checks)`);

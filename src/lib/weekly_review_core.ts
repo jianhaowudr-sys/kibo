@@ -54,6 +54,6 @@ export function pickHighlight(d: WeeklyReviewData): string {
   if (d.workoutCount >= 3) return `這週練了 ${d.workoutCount} 次，很穩！`;
   if (d.sleepNights >= 4 && d.sleepHoursAvg >= 7) return `睡眠均 ${d.sleepHoursAvg}h，作息顧得很好～`;
   if (d.mealDays >= 6) return `飲食 ${d.mealDays} 天都有記，超自律！`;
-  if (d.waterDailyAvgMl >= 2000) return `喝水達標，${Math.round(d.waterDailyAvgMl / 100) / 10} L／天！`;
+  if (d.waterDailyAvgMl >= 2000) return `喝水達標，${(d.waterDailyAvgMl / 1000).toFixed(1)} L／天！`;
   return '這週有動有記，繼續保持！';
 }
