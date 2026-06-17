@@ -30,8 +30,8 @@ export function WeeklyReviewBlock({ message }: { message: PetMessage }) {
     borderWidth: 1, borderColor: palette.card,
   } as const;
 
-  // triggerData 缺失/壞掉 → 只顯示標題文字
-  if (!data || typeof data.weekStartKey !== 'string') {
+  // triggerData 缺失/壞掉（含部分欄位缺失）→ 只顯示標題文字
+  if (!data || typeof data.weekStartKey !== 'string' || typeof data.workoutCount !== 'number') {
     return (
       <View style={containerStyle}>
         <Text style={{ color: palette.mute, fontSize: 11, marginBottom: 4 }}>{format(ts, 'M/d HH:mm')} · 週回顧</Text>
