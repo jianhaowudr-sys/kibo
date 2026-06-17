@@ -671,7 +671,7 @@ export default function NewMeal() {
           {/* 拍攝模式：食物 / 營養標 */}
           <View className="flex-row gap-2 mb-3">
             <Pressable
-              onPress={() => { haptic.tapLight(); setPhotoMode('meal'); }}
+              onPress={() => { haptic.tapLight(); setPhotoMode('meal'); parseSeq.current++; setAiParsed(false); setVerifyState('idle'); }}
               className={`flex-1 py-2 rounded-xl items-center ${photoMode === 'meal' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
             >
               <Text className={`font-semibold text-sm ${photoMode === 'meal' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
@@ -679,7 +679,7 @@ export default function NewMeal() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={() => { haptic.tapLight(); setPhotoMode('label'); }}
+              onPress={() => { haptic.tapLight(); setPhotoMode('label'); parseSeq.current++; setAiParsed(false); setVerifyState('idle'); }}
               className={`flex-1 py-2 rounded-xl items-center ${photoMode === 'label' ? 'bg-kibo-primary' : 'bg-kibo-card'}`}
             >
               <Text className={`font-semibold text-sm ${photoMode === 'label' ? 'text-kibo-bg' : 'text-kibo-text'}`}>
