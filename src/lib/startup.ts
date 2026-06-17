@@ -58,6 +58,8 @@ export function runBackgroundStartup(): void {
       if (user) {
         const { generateDailyMessages } = await import('@/lib/pet_messages');
         await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
+        const { maybeGenerateWeeklyReview } = await import('@/lib/weekly_review');
+        await maybeGenerateWeeklyReview(user.id, pets[0] ?? null);
         await useAppStore.getState().refreshHealth();
       }
     } catch (e) {
