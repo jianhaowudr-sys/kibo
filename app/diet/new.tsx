@@ -498,7 +498,7 @@ export default function NewMeal() {
 
       // 單張或同一餐合併 → 1 筆
       await addMeal({
-        loggedAt: new Date() as any,
+        loggedAt: loggedAt as any,
         mealType,
         title: title.trim() || null,
         itemsJson: items.length > 0 ? JSON.stringify(items) : null,

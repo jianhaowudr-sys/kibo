@@ -96,9 +96,12 @@ export default function HomeScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await bootstrap();
-    await refreshHistory();
-    setRefreshing(false);
+    try {
+      await bootstrap();
+      await refreshHistory();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // 起床 prompt 觸發
