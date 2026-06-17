@@ -5,6 +5,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as healthRepo from '@/db/health_repo';
 import { format } from 'date-fns';
+import { WeeklyReviewBlock } from '@/components/pet/WeeklyReviewBlock';
 
 const CATEGORY_ICON: Record<string, string> = {
   greeting: '👋',
@@ -39,6 +40,9 @@ export default function PetMessagesHistory() {
         共 {messages.length} 則訊息
       </Text>
       {messages.map((m) => {
+        if (m.category === 'weekly') {
+          return <WeeklyReviewBlock key={m.id} message={m} />;
+        }
         const ts = m.generatedAt instanceof Date ? m.generatedAt : new Date(m.generatedAt);
         return (
           <View
