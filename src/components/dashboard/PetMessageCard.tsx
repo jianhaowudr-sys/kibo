@@ -12,6 +12,7 @@ const CATEGORY_ICON: Record<string, string> = {
   concern: '🥺',
   celebration: '🎉',
   reminder: '💡',
+  weekly: '📊',
 };
 
 export function PetMessageCard() {

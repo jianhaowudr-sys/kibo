@@ -792,6 +792,14 @@ export async function listMealsByDate(userId: number, dateKey: string): Promise<
   return rs.map(rowToMeal);
 }
 
+export async function listMealsBetween(userId: number, fromMs: number, toMs: number): Promise<Meal[]> {
+  const rs = await sqliteDb.getAllAsync<Row>(
+    `SELECT * FROM meals WHERE user_id = ? AND logged_at >= ? AND logged_at < ? ORDER BY logged_at ASC`,
+    [userId, fromMs, toMs],
+  );
+  return rs.map(rowToMeal);
+}
+
 export async function listMealDates(userId: number, limit = 30): Promise<string[]> {
   const rs = await sqliteDb.getAllAsync<Row>(
     `SELECT DISTINCT date(logged_at / 1000, 'unixepoch', 'localtime') as d

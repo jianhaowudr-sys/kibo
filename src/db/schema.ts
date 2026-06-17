@@ -294,7 +294,7 @@ export const petMessages = sqliteTable('pet_messages', {
   userId: integer('user_id').notNull().references(() => users.id),
   petId: integer('pet_id').references(() => pets.id),
   generatedAt: integer('generated_at', { mode: 'timestamp_ms' }).notNull(),
-  category: text('category').notNull(),  // greeting | concern | celebration | reminder
+  category: text('category').notNull(),  // greeting | concern | celebration | reminder | weekly
   text: text('text').notNull(),
   read: integer('read').notNull().default(0),
   triggerData: text('trigger_data'),
@@ -366,7 +366,7 @@ export type ScoreSource = 'meal' | 'workout' | 'sleep' | 'body' | 'water' | 'bow
 
 export type BristolType = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export type PeriodFlow = 'spot' | 'light' | 'medium' | 'heavy';
-export type PetMessageCategory = 'greeting' | 'concern' | 'celebration' | 'reminder';
+export type PetMessageCategory = 'greeting' | 'concern' | 'celebration' | 'reminder' | 'weekly';
 export type MealItem = { name: string; portion?: string; calories: number; protein: number; carb: number; fat: number };
 
 export type ExerciseCategory = 'strength' | 'cardio' | 'flexibility';

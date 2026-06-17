@@ -17,7 +17,7 @@ export type PetActivity7d = {
   daysSinceLastOpen: number;
 };
 
-const TEMPLATES: Record<PetMessageCategory, ((data: any) => string)[]> = {
+const TEMPLATES: Record<Exclude<PetMessageCategory, 'weekly'>, ((data: any) => string)[]> = {
   greeting: [
     () => '早安，新的一天～',
     () => '今天也要好好過喔',
@@ -89,7 +89,7 @@ export async function generateDailyMessages(userId: number, pet: Pet | null, str
   const activity = await gatherActivity(userId, pet?.id ?? null);
   const data = { ...activity, streak, petName: pet?.name };
 
-  const cats: PetMessageCategory[] = ['greeting', 'concern', 'celebration', 'reminder'];
+  const cats: Exclude<PetMessageCategory, 'weekly'>[] = ['greeting', 'concern', 'celebration', 'reminder'];
   const insertedIds: number[] = [];
   const today = new Date().toDateString();
 

@@ -11,6 +11,7 @@ const CATEGORY_ICON: Record<string, string> = {
   concern: '🥺',
   celebration: '🎉',
   reminder: '💡',
+  weekly: '📊',
 };
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -18,6 +19,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   concern: '關心',
   celebration: '慶祝',
   reminder: '提醒',
+  weekly: '週回顧',
 };
 
 export default function PetMessagesHistory() {
