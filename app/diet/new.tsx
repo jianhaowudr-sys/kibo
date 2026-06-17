@@ -163,7 +163,7 @@ export default function NewMeal() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [aiParsed, setAiParsed] = useState(false);
   const [aiOriginalItems, setAiOriginalItems] = useState<MealItem[] | null>(null);
-  const [perPhotoReadings, setPerPhotoReadings] = useState<MealReading[]>([]);
+  const [perPhotoReadings, setPerPhotoReadings] = useState<(MealReading | null)[]>([]);
   const [mergeMode, setMergeMode] = useState<MergeMode>('sameMeal');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [includePalmRef, setIncludePalmRef] = useState(false);
@@ -171,7 +171,7 @@ export default function NewMeal() {
   type VerifyState = 'idle' | 'verifying' | 'verified' | 'diff';
   const [verifyState, setVerifyState] = useState<VerifyState>('idle');
   const [pendingVerified, setPendingVerified] = useState<MealReading | null>(null);
-  const [pendingVerifiedList, setPendingVerifiedList] = useState<MealReading[] | null>(null);
+  const [pendingVerifiedList, setPendingVerifiedList] = useState<(MealReading | null)[] | null>(null);
   const [verifyDiff, setVerifyDiff] = useState<MealDiff | null>(null);
   const appliedSnapshot = useRef<AppliedSnapshot | null>(null);
   // 每輪判讀遞增；照片增刪/模式切換也遞增，讓過期的背景複核結果自動作廢
@@ -340,24 +340,26 @@ export default function NewMeal() {
           });
         }
       } else {
-        // 多照片：每張獨立兩段式。低耗 → 序列且跳過複核（同舊行為的單次序列）
-        let results: TwoPhaseResult[] = [];
+        // 多照片：每張獨立兩段式，結果與 photos 索引對齊（該張失敗 → 該格 null）
+        let perPhoto: (TwoPhaseResult | null)[] = [];
         if (lowPower) {
+          // 低耗 → 序列且跳過複核（同舊行為的單次序列）
           for (const p of photos) {
             try {
-              results.push(await readMealTwoPhase(p.base64, { palmRef, skipVerify: true }));
+              perPhoto.push(await readMealTwoPhase(p.base64, { palmRef, skipVerify: true }));
             } catch (e) {
               console.warn('Photo read failed', e);
+              perPhoto.push(null);
             }
           }
         } else {
           const settled = await Promise.allSettled(photos.map((p) => readMealTwoPhase(p.base64, { palmRef })));
-          results = settled
-            .filter((s): s is PromiseFulfilledResult<TwoPhaseResult> => s.status === 'fulfilled')
-            .map((s) => s.value);
+          perPhoto = settled.map((s) => (s.status === 'fulfilled' ? s.value : null));
         }
-        const prelims = results.map((r) => r.preliminary);
-        setPerPhotoReadings(prelims);
+        // 與 photos 對齊的初判清單（失敗格為 null，縮圖標籤與分筆儲存才不會錯位）
+        const prelimsAligned: (MealReading | null)[] = perPhoto.map((r) => r?.preliminary ?? null);
+        setPerPhotoReadings(prelimsAligned);
+        const prelims = prelimsAligned.filter((r): r is MealReading => r !== null);
         if (prelims.length === 0) {
           Alert.alert('判讀失敗', '所有照片都判讀失敗，請手動輸入');
           return;
@@ -367,15 +369,19 @@ export default function NewMeal() {
         apply(merged);
         if (!lowPower) {
           setVerifyState('verifying');
-          Promise.all(results.map((r) => r.verification)).then((vs) => {
+          Promise.all(perPhoto.map((r) => r?.verification ?? Promise.resolve(null))).then((vsAligned) => {
             if (seq !== parseSeq.current) return;
-            if (vs.every((v) => v === null)) {
+            if (vsAligned.every((v) => v === null)) {
               setVerifyState('idle');
               return;
             }
-            const verifiedList = vs.map((v, i) => v ?? prelims[i]); // 個別複核失敗 → 沿用該張初判
-            const mergedVerified = mergeMealReadings(verifiedList, mergeMode);
-            handleVerified(merged, mergedVerified, verifiedList);
+            // 與 photos 對齊：複核成功取複核值，否則沿用該張初判；該張本就失敗 → null
+            const verifiedAligned: (MealReading | null)[] = prelimsAligned.map((p, i) => (p === null ? null : (vsAligned[i] ?? p)));
+            const mergedVerified = mergeMealReadings(
+              verifiedAligned.filter((r): r is MealReading => r !== null),
+              mergeMode,
+            );
+            handleVerified(merged, mergedVerified, verifiedAligned);
           });
         }
       }
@@ -408,7 +414,7 @@ export default function NewMeal() {
     setAiParsed(true);
   };
 
-  const handleVerified = (prelim: MealReading, verified: MealReading, verifiedList: MealReading[]) => {
+  const handleVerified = (prelim: MealReading, verified: MealReading, verifiedList: (MealReading | null)[]) => {
     const diff = diffReadings(prelim, verified);
     if (__DEV__) console.log(`[ai] 複核差異 ${diff.calorieDeltaPct}%；新增 ${diff.addedItems.length}、移除 ${diff.removedItems.length}`);
     if (!diff.significant) {
@@ -473,10 +479,12 @@ export default function NewMeal() {
   const save = async () => {
     haptic.tapMedium();
     try {
-      // 多張照片 + 不同餐模式 → 拆 N 餐分別存
-      if (photos.length > 1 && mergeMode === 'multipleMeals' && perPhotoReadings.length === photos.length) {
+      // 多張照片 + 不同餐模式 → 拆 N 餐分別存（判讀失敗的照片跳過，存成功的）
+      if (photos.length > 1 && mergeMode === 'multipleMeals' && perPhotoReadings.some((r) => r !== null)) {
+        let saved = 0;
         for (let i = 0; i < photos.length; i++) {
           const r = perPhotoReadings[i];
+          if (!r) continue; // 該張判讀失敗 → 跳過，使用者可稍後手動補
           await addMeal({
             loggedAt: loggedAt as any,
             mealType,
@@ -487,12 +495,20 @@ export default function NewMeal() {
             carbG: r.totalCarb || null,
             fatG: r.totalFat || null,
             photoUri: photos[i].uri,
-            note: i === 0 ? (note.trim() || null) : null,
+            note: saved === 0 ? (note.trim() || null) : null,
             aiParsed: true,
           });
+          saved++;
         }
         haptic.success();
-        router.back();
+        const failed = photos.length - saved;
+        if (failed > 0) {
+          Alert.alert('已分別儲存', `成功存 ${saved} 筆；有 ${failed} 張判讀失敗未儲存，可稍後手動補登。`, [
+            { text: '知道了', onPress: () => router.back() },
+          ]);
+        } else {
+          router.back();
+        }
         return;
       }
 
