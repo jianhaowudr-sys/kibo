@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Pressable, TextInput, Alert, Image, ActivityIndicator, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
@@ -134,6 +134,7 @@ export default function NewMeal() {
   const insets = useSafeAreaInsets();
   const { type: initType, dateKey: initDateKey, quick: initQuick } = useLocalSearchParams<{ type?: MealType; dateKey?: string; quick?: string }>();
   const addMeal = useAppStore((s) => s.addMeal);
+  const consumePendingBarcodeResult = useAppStore((s) => s.consumePendingBarcodeResult);
 
   const [mealType, setMealType] = useState<MealType>(initType ?? guessMealType());
   // 記錄到的時間。預設：今天 = 現在；過去日期 = 該日餐型標準時間。
@@ -178,6 +179,7 @@ export default function NewMeal() {
   const parseSeq = useRef(0);
   const lowPower = useLowPower();
   const healthSettings = useAppStore((s) => s.healthSettings);
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
 
   const onPickFromLibrary = (item: MealItem) => {
     const newItems = [...items, item];
@@ -209,7 +211,8 @@ export default function NewMeal() {
       fatG: Math.round((item.fat || 0) * 10) / 10,
       portion: item.portion || '1 份',
       photoUri: photos[0]?.uri ?? null,
-      source: 'ai',
+      source: scannedBarcode ? 'barcode' : 'ai',
+      barcode: scannedBarcode,
     });
     haptic.success();
     Alert.alert('✓ 已加入食物庫', `「${item.name}」下次可直接點選不必再拍`);
@@ -414,6 +417,34 @@ export default function NewMeal() {
     setAiParsed(true);
   };
 
+  useFocusEffect(
+    useCallback(() => {
+      const r = consumePendingBarcodeResult();
+      if (!r) return;
+      if (r.tier === 'local') {
+        const f = r.food;
+        onPickFromLibrary({
+          name: f.name,
+          portion: f.portion ?? undefined,
+          calories: f.caloriesKcal,
+          protein: f.proteinG,
+          carb: f.carbG,
+          fat: f.fatG,
+        });
+        setScannedBarcode(null);
+      } else if (r.tier === 'off') {
+        apply(r.reading);
+        setScannedBarcode(r.barcode);
+      } else {
+        setScannedBarcode(r.barcode);
+        Alert.alert(`條碼 ${r.barcode} 查不到`, '改拍營養標讀取，或手動輸入數值。', [
+          { text: '拍營養標', onPress: () => { setPhotoMode('label'); onChoosePhoto(); } },
+          { text: '手動輸入', style: 'cancel' },
+        ]);
+      }
+    }, [consumePendingBarcodeResult]),
+  );
+
   const handleVerified = (prelim: MealReading, verified: MealReading, verifiedList: (MealReading | null)[]) => {
     const diff = diffReadings(prelim, verified);
     if (__DEV__) console.log(`[ai] 複核差異 ${diff.calorieDeltaPct}%；新增 ${diff.addedItems.length}、移除 ${diff.removedItems.length}`);
@@ -616,6 +647,13 @@ export default function NewMeal() {
                 <Text className="text-kibo-mute text-[10px] mt-1">挑選常吃食物</Text>
               </Pressable>
             </View>
+            <Pressable
+              onPress={() => { haptic.tapLight(); router.push('/diet/scan' as any); }}
+              className="bg-kibo-surface border-2 border-kibo-card rounded-2xl py-3 items-center mb-2 flex-row justify-center gap-2"
+            >
+              <Text className="text-xl">📷</Text>
+              <Text className="text-kibo-text font-bold">掃條碼查營養</Text>
+            </Pressable>
             <Text className="text-kibo-mute text-[10px] text-center mb-3">
               💡 常吃的食物（高蛋白、飯糰）建到食物庫後 → 直接挑選不必拍照
             </Text>
