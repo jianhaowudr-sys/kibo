@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
+import { isOffLookupEnabled, setOffLookupEnabled } from '@/lib/food_lookup';
 
 const CUP_PRESETS = [200, 250, 300, 350, 400];
 const BOTTLE_PRESETS = [500, 600, 750, 1000];
@@ -47,6 +48,9 @@ export default function HealthSettings() {
   const [sleepOpen, setSleepOpen] = useState(false);
   const [periodOpen, setPeriodOpen] = useState(false);
   const [bodyOpen, setBodyOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [offEnabled, setOffEnabled] = useState(true);
+  useEffect(() => { isOffLookupEnabled().then(setOffEnabled); }, []);
 
   const Section = ({ title, open, onToggle, children }: any) => (
     <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
@@ -328,6 +332,17 @@ export default function HealthSettings() {
             參考：成人男平均 18×9、女平均 16×8
           </Text>
         </View>
+      </Section>
+
+      <Section title="📷 條碼掃描" open={scanOpen} onToggle={() => setScanOpen(!scanOpen)}>
+        <RowSwitch
+          label="查無條碼時聯網查 Open Food Facts"
+          value={offEnabled}
+          onChange={async (v: boolean) => { setOffEnabled(v); await setOffLookupEnabled(v); }}
+        />
+        <Text style={{ color: palette.mute, fontSize: 11, marginTop: 4 }}>
+          關閉後只用「已掃過的本地紀錄」與「拍營養標」，不會聯網。
+        </Text>
       </Section>
     </ScrollView>
   );
