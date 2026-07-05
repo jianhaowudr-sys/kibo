@@ -93,6 +93,7 @@ type State = {
 
   // Surprise Box 待開獎
   pendingReward: { id: string; label: string; rarity: string } | null;
+  pendingBarcodeResult: import('@/lib/food_lookup').BarcodeLookupResult | null;
 
   currentWorkoutId: number | null;
   activeSets: ActiveSet[];
@@ -210,6 +211,8 @@ type Actions = {
   // Surprise Box（Trinity 完成觸發）
   checkTrinityCompletion: () => Promise<void>;
   consumePendingReward: () => void;
+  setPendingBarcodeResult: (r: import('@/lib/food_lookup').BarcodeLookupResult | null) => void;
+  consumePendingBarcodeResult: () => import('@/lib/food_lookup').BarcodeLookupResult | null;
 
   signUpEmail: (email: string, password: string) => Promise<{ needConfirm: boolean }>;
   signInEmail: (email: string, password: string) => Promise<void>;
@@ -278,6 +281,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   streakFreezeTokens: 0,
   undoStack: [],
   pendingReward: null,
+  pendingBarcodeResult: null,
   authLoading: false,
   syncStatus: 'idle',
   syncError: null,
@@ -858,7 +862,8 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       fatG: data.fatG ?? 0,
       portion: data.portion,
       photoUri: data.photoUri,
-      source: data.source as 'manual' | 'ai',
+      source: data.source as 'manual' | 'ai' | 'barcode',
+      barcode: data.barcode ?? null,
     });
     await get().refreshCustomFoods();
     get().enqueueSync?.();
@@ -1218,6 +1223,13 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
 
   consumePendingReward: () => {
     set({ pendingReward: null });
+  },
+
+  setPendingBarcodeResult: (r) => set({ pendingBarcodeResult: r }),
+  consumePendingBarcodeResult: () => {
+    const r = get().pendingBarcodeResult;
+    if (r) set({ pendingBarcodeResult: null });
+    return r;
   },
 
   signUpEmail: async (email, password) => {
