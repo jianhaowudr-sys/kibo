@@ -22,7 +22,11 @@ export async function isOffLookupEnabled(): Promise<boolean> {
 }
 
 export async function setOffLookupEnabled(v: boolean): Promise<void> {
-  await AsyncStorage.setItem(OFF_KEY, v ? '1' : '0');
+  try {
+    await AsyncStorage.setItem(OFF_KEY, v ? '1' : '0');
+  } catch {
+    // best-effort；寫入失敗時 UI 狀態可能與持久值暫時不同步
+  }
 }
 
 /** GET OFF v2，keyless，6 秒 timeout；status===1 回 product，否則/任何錯誤回 null。 */
@@ -44,7 +48,7 @@ export async function fetchOpenFoodFacts(barcode: string): Promise<any | null> {
 
 /** 三層：本地快取 → （開關 on）OFF → notfound。 */
 export async function lookupBarcode(userId: number, barcode: string): Promise<BarcodeLookupResult> {
-  const local = await repo.findCustomFoodByBarcode(userId, barcode);
+  const local = await repo.findCustomFoodByBarcode(userId, barcode).catch(() => null);
   if (local) return { tier: 'local', barcode, food: local };
   if (await isOffLookupEnabled()) {
     const product = await fetchOpenFoodFacts(barcode);
