@@ -35,6 +35,7 @@ export default function BarcodeScan() {
             '關於條碼查詢',
             '查不到時會把「條碼數字」傳到 Open Food Facts 開放資料庫（不含照片、不含帳號）。可在「我 → 健康設定」關閉聯網查詢。',
             [{ text: '知道了', onPress: () => resolve() }],
+            { cancelable: false, onDismiss: () => resolve() }, // 防 Android 返回鍵關掉對話框卻讓 Promise 卡住
           );
         });
         await AsyncStorage.setItem(NOTICE_KEY, '1');
