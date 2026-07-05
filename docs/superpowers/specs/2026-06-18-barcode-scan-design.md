@@ -121,3 +121,21 @@ export type BarcodeLookupResult =
 - OFF 寫回（貢獻台灣缺漏產品）。
 - 多語系產品名挑選（v1 取 OFF 預設 product_name）。
 - 份量倍數選擇器整合（沿用現有 diet 表單編輯）。
+- **barcode 雲端同步**：目前 `barcode` 欄只存本地，`cloud_sync` 與 Supabase 表都無此欄——換機/重裝後掃描食物的營養仍會依名稱還原，但 barcode 鍵需重掃一次才重建。已開背景任務追蹤（需 Supabase 加欄 + cloud_sync push/pull 補欄位）。
+- **notfound → 拍營養標的壓縮 preset**：`pick()`/`onChoosePhoto` 依定義當下的 `photoMode` 推導壓縮 preset，屬既有耦合；notfound 分支 `setPhotoMode('label')` 後立即開相機時，該張營養標可能以 `food` preset（較低解析度）壓縮，略影響 OCR。非本功能引入，列後續。
+
+## 驗收狀態（2026-06-18 實作完成）
+
+**已自動驗證（本機）：**
+- `npx tsc --noEmit` 全綠（每個 task 完成時皆通過）。
+- `npx -y tsx scripts/verify_food_lookup.ts` → ALL PASS (16 checks)：`isValidBarcode` + `mapOffProductToReading`（每份/每100g/字串營養素/每份熱量0退回100g/缺熱量→null）。
+
+**實作摘要（11 commits，361d7c3…a87a77f）：**
+- 純邏輯抽零-runtime-import 的 `food_lookup_core.ts`（node 斷言）；I/O 與三層編排在 `food_lookup.ts`；掃描頁 `app/diet/scan.tsx` 沿用 expo-camera（零新原生依賴）。
+- 逐 task 雙審抓到並修正 4 個真實 bug：(1) `energy-kcal_serving:0` 誤棄有效每100g 資料；(2) `lookupBarcode` tier-1 DB 例外未守衛；(3) 掃描頁一次性說明對話框 Android 返回鍵讓流程卡住；(4) diet/new focus 過期閉包會清掉已手動加入的食物（資料遺失）。
+
+**待使用者在實機驗收：**
+- 台灣商品實掃：OFF 命中 → 預填；OFF 查無 → 提示拍營養標接 OCR。
+- 本地快取：OFF 命中存庫後再掃同條碼 → 離線/瞬間帶出（tier local）。
+- 權限拒絕 → 授權說明 + 去設定。OFF 關閉 → 直接 notfound 不聯網。首次說明只跳一次。
+- 非食品條碼（QR/長度不符）→ 不誤判。
