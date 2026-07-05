@@ -259,7 +259,8 @@ export const customFoods = sqliteTable('custom_foods', {
   fatG: real('fat_g').notNull().default(0),
   portion: text('portion'),                  // e.g. "1 份 30g"
   photoUri: text('photo_uri'),
-  source: text('source').notNull().default('manual'),  // 'manual' | 'ai'
+  source: text('source').notNull().default('manual'),  // 'manual' | 'ai' | 'barcode'
+  barcode: text('barcode'),
   useCount: integer('use_count').notNull().default(0),
   lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),

@@ -260,6 +260,7 @@ CREATE TABLE IF NOT EXISTS custom_foods (
   portion TEXT,
   photo_uri TEXT,
   source TEXT NOT NULL DEFAULT 'manual',
+  barcode TEXT,
   use_count INTEGER NOT NULL DEFAULT 0,
   last_used_at INTEGER,
   created_at INTEGER NOT NULL
@@ -457,6 +458,11 @@ async function runAdditions(): Promise<void> {
         [Date.now(), u.id],
       );
     }
+  }
+
+  // 條碼掃描：custom_foods 加 barcode 欄
+  if (!(await hasColumn('custom_foods', 'barcode'))) {
+    await sqliteDb.runAsync('ALTER TABLE custom_foods ADD COLUMN barcode TEXT');
   }
 }
 

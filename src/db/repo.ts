@@ -1053,6 +1053,7 @@ const rowToCustomFood = (r: Row): CustomFood => ({
   portion: r.portion,
   photoUri: r.photo_uri,
   source: r.source,
+  barcode: r.barcode ?? null,
   useCount: r.use_count,
   lastUsedAt: r.last_used_at ? new Date(r.last_used_at) : null,
   createdAt: new Date(r.created_at),
@@ -1090,19 +1091,29 @@ export async function findCustomFoodByName(userId: number, name: string): Promis
   return r ? rowToCustomFood(r) : null;
 }
 
+export async function findCustomFoodByBarcode(userId: number, barcode: string): Promise<CustomFood | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(
+    `SELECT * FROM custom_foods WHERE user_id = ? AND barcode = ? ORDER BY use_count DESC LIMIT 1`,
+    [userId, barcode],
+  );
+  return r ? rowToCustomFood(r) : null;
+}
+
 export async function createCustomFood(data: {
   userId: number; name: string; emoji?: string;
   caloriesKcal: number; proteinG: number; carbG: number; fatG: number;
-  portion?: string | null; photoUri?: string | null; source?: 'manual' | 'ai';
+  portion?: string | null; photoUri?: string | null;
+  source?: 'manual' | 'ai' | 'barcode'; barcode?: string | null;
 }): Promise<number> {
   const persistedPhoto = await savePhotoToDocs(data.photoUri ?? null, 'food_library');
   const r = await sqliteDb.runAsync(
-    `INSERT INTO custom_foods (user_id, name, emoji, calories_kcal, protein_g, carb_g, fat_g, portion, photo_uri, source, use_count, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    `INSERT INTO custom_foods (user_id, name, emoji, calories_kcal, protein_g, carb_g, fat_g, portion, photo_uri, source, barcode, use_count, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
     [
       data.userId, data.name, data.emoji ?? '🍽',
       data.caloriesKcal, data.proteinG, data.carbG, data.fatG,
       data.portion ?? null, persistedPhoto, data.source ?? 'manual',
+      data.barcode ?? null,
       Date.now(),
     ],
   );
