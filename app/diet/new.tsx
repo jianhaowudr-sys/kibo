@@ -182,12 +182,14 @@ export default function NewMeal() {
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null);
 
   const onPickFromLibrary = (item: MealItem) => {
-    const newItems = [...items, item];
-    setItems(newItems);
-    setCalories(String(newItems.reduce((s, x) => s + (x.calories || 0), 0)));
-    setProtein(String(Math.round(newItems.reduce((s, x) => s + (x.protein || 0), 0) * 10) / 10));
-    setCarb(String(Math.round(newItems.reduce((s, x) => s + (x.carb || 0), 0) * 10) / 10));
-    setFat(String(Math.round(newItems.reduce((s, x) => s + (x.fat || 0), 0) * 10) / 10));
+    setItems((prev) => {
+      const newItems = [...prev, item];
+      setCalories(String(newItems.reduce((s, x) => s + (x.calories || 0), 0)));
+      setProtein(String(Math.round(newItems.reduce((s, x) => s + (x.protein || 0), 0) * 10) / 10));
+      setCarb(String(Math.round(newItems.reduce((s, x) => s + (x.carb || 0), 0) * 10) / 10));
+      setFat(String(Math.round(newItems.reduce((s, x) => s + (x.fat || 0), 0) * 10) / 10));
+      return newItems;
+    });
     haptic.success();
   };
 
@@ -415,6 +417,7 @@ export default function NewMeal() {
     setFat(next.fat);
     appliedSnapshot.current = snapshotOf(next);
     setAiParsed(true);
+    setScannedBarcode(null);
   };
 
   useFocusEffect(
