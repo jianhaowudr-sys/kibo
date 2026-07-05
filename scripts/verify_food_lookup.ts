@@ -43,4 +43,20 @@ check('無 nutriments → null', mapOffProductToReading({ product_name: 'x' }) =
 }
 check('有 nutriments 但無熱量 → null', mapOffProductToReading({ product_name: 'x', nutriments: { proteins_100g: 5 } }) === null);
 
+{
+  const r = mapOffProductToReading({
+    product_name: '字串營養素',
+    nutriments: { 'energy-kcal_100g': '220', proteins_100g: '12.5', carbohydrates_100g: '30', fat_100g: '5.2' },
+  });
+  check('字串營養素正確解析', r != null && r.totalCalories === 220 && r.items[0].protein === 13);
+}
+{
+  const r = mapOffProductToReading({
+    product_name: '每份熱量0',
+    serving_size: '5g',
+    nutriments: { 'energy-kcal_serving': 0, 'energy-kcal_100g': 400, proteins_100g: 5 },
+  });
+  check('每份熱量 0 → 退回每 100g', r != null && r.totalCalories === 400 && r.items[0].portion === '每 100g');
+}
+
 console.log(`ALL PASS (${passed} checks)`);
