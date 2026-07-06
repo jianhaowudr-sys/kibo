@@ -47,14 +47,16 @@ export function RestTimer({ autoStartKey }: { autoStartKey?: number }) {
   const beginRest = async (seconds: number) => {
     // 先同步切到計時中（畫面立即反應），再處理通知排程/取消
     const prevNotif = notifIdRef.current;
+    notifIdRef.current = null;
     doneFiredRef.current = false;
     cue4FiredRef.current = false;
     endTimeRef.current = Date.now() + seconds * 1000;
     setRemaining(seconds);
     setActive(true);
     setExpanded(false);
+    setEditIdx(null); // 若編輯面板開著，開始休息時關掉
+    await cancelRestNotification(prevNotif); // 先取消前一次殘留，再排新的（避免競態孤兒通知）
     notifIdRef.current = await scheduleRestDoneNotification(seconds);
-    await cancelRestNotification(prevNotif); // 取消前一次殘留（若有）
   };
 
   // autoStartKey 觸發
