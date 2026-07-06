@@ -27,7 +27,10 @@ export async function scheduleRestDoneNotification(seconds: number): Promise<str
     if (!ok) return null;
     return await Notifications.scheduleNotificationAsync({
       content: { title: '⏱ 休息結束', body: '開始下一組！', data: { type: 'rest' } },
-      trigger: { seconds: Math.max(1, Math.round(seconds)) } as any,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: Math.max(1, Math.round(seconds)),
+      },
     });
   } catch {
     return null;
