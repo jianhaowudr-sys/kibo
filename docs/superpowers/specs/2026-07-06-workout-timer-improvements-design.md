@@ -96,3 +96,20 @@
 - rest timer 跨頁/跨啟動持久化（目前綁進行中訓練頁）。
 - 佇列拖曳（wrap 佈局拖放）；本輪用選單式排序。
 - 每課表獨立的 rest 秒數（目前全域一組）。
+- `RestTimer.saveEdit` 選中格以「值」比對（`durations[i] === preset`）——兩格設同秒數時的邊界（改非選中的重複格也會同步 preset）；非破壞性，列後續（需引入 selected-index 模型才乾淨）。
+- `reminders.ts`（喝水/每日提醒）的通知 trigger 也缺 SDK54 的 `type` discriminant，可能不觸發——本功能修了 `rest_timer.ts`，reminders.ts 已另開背景任務追蹤。
+
+## 驗收狀態（2026-07-06 實作完成）
+
+**已自動驗證（本機）：**
+- `npx tsc --noEmit` 全綠（每個 task 完成時皆通過；機器記憶體吃緊時用 `node --max-old-space-size=2048 ./node_modules/typescript/bin/tsc --noEmit`）。
+- `npx -y tsx scripts/verify_rest_timer.ts` → ALL PASS (21 checks)：`clampDuration`/`parseDurations`/`computeRemaining`/`swapAdjacent`。
+
+**實作摘要（8 commits，abba931…5ff61f3）：**
+- 純邏輯抽零-runtime-import 的 `rest_timer_core.ts`（node 斷言）；存取+通知在 `rest_timer.ts`；RestTimer 改 endTime 時間戳 + AppState 重算；佇列排序用 store `reorderQueue`。
+- 逐 task 雙審抓修 3 個真實 bug：(1) 通知 trigger 缺 SDK54 `type` discriminant（會不觸發）；(2) 佇列選單 Android Alert 4 鈕截斷、中間項無法取消（加 cancelable）；(3) beginRest 競態孤兒通知（先取消再排程）。
+
+**待使用者在實機驗收：**
+- ① 進行中訓練長按動作晶片 → 上移/下移/移除；首項無上移、末項無下移；中間項可取消（Android 返回鍵）。
+- ② 展開組間計時 → 長按某格滾輪改秒數 → 確認；重開 App 仍保留。
+- ③ 開始休息 → 縮到背景數秒回來，剩餘時間正確扣掉；到點跳「⏱ 休息結束」通知；前景歸零只震一次；離開頁面/重開無殘留通知；未授權通知時 App 內倒數仍正常。
