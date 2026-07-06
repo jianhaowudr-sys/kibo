@@ -6,6 +6,7 @@ import type { WaterLog, BowelLog, SleepLog, PeriodDay, PetMessage, BristolType, 
 import { DEFAULT_HEALTH_SETTINGS, parseHealthSettings, stringifyHealthSettings, type HealthSettings } from '@/lib/health_settings';
 import { QUICK_ADD_BATCH_MS } from '@/lib/gestures';
 import * as healthRepo from '@/db/health_repo';
+import { swapAdjacent } from '@/lib/rest_timer_core';
 
 export type PlannedSet = {
   key: string;
@@ -235,6 +236,7 @@ type Actions = {
   pickFromQueue: (exerciseId: number) => Exercise | null;
   addExercisesToQueue: (exerciseIds: number[]) => void;
   removeFromQueue: (exerciseId: number) => void;
+  reorderQueue: (exerciseId: number, dir: 'up' | 'down') => void;
   saveAsNewRoutine: (name: string, emoji?: string) => Promise<number>;
 
   setTempSelectedIds: (ids: number[]) => void;
@@ -1427,6 +1429,11 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
   removeFromQueue: (exerciseId) => {
     const { routineQueue } = get();
     set({ routineQueue: routineQueue.filter((e) => e.id !== exerciseId) });
+  },
+
+  reorderQueue: (exerciseId, dir) => {
+    const { routineQueue } = get();
+    set({ routineQueue: swapAdjacent(routineQueue, exerciseId, dir) });
   },
 
   saveAsNewRoutine: async (name, emoji = '💪') => {
