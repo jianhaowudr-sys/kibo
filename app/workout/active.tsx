@@ -28,6 +28,7 @@ export default function ActiveWorkout() {
   const clearRoutineQueue = useAppStore((s) => s.clearRoutineQueue);
   const addExercisesToQueue = useAppStore((s) => s.addExercisesToQueue);
   const removeFromQueue = useAppStore((s) => s.removeFromQueue);
+  const reorderQueue = useAppStore((s) => s.reorderQueue);
   const fetchLastSetFor = useAppStore((s) => s.fetchLastSetFor);
   const fetchRecentSetsFor = useAppStore((s) => s.fetchRecentSetsFor);
   const recentSetsByExercise = useAppStore((s) => s.recentSetsByExercise);
@@ -281,7 +282,7 @@ export default function ActiveWorkout() {
           <View className="flex-row items-center justify-between mb-2">
             <Text className="text-kibo-primary text-xs font-semibold">
               📋 動作清單 ({routineQueue.length})
-              {routineQueue.length > 0 && <Text className="text-kibo-mute font-normal"> · 長按移除</Text>}
+              {routineQueue.length > 0 && <Text className="text-kibo-mute font-normal"> · 長按可調整順序/移除</Text>}
             </Text>
             <Pressable onPressIn={() => haptic.tapLight()} onPress={openMultiSelect} hitSlop={8}>
               <Text className="text-kibo-primary text-xs font-semibold">＋ 加動作</Text>
@@ -308,22 +309,21 @@ export default function ActiveWorkout() {
                     onPressIn={() => haptic.tapLight()}
                     onPress={() => setSelectedExerciseId(ex.id)}
                     onLongPress={() => {
-                      haptic.warning();
-                      Alert.alert(
-                        '從清單移除？',
-                        ex.name,
-                        [
-                          { text: '取消', style: 'cancel' },
-                          {
-                            text: '移除',
-                            style: 'destructive',
-                            onPress: () => {
-                              removeFromQueue(ex.id);
-                              if (selectedId === ex.id) setSelectedExerciseId(null);
-                            },
-                          },
-                        ],
-                      );
+                      haptic.tapMedium();
+                      const idx = routineQueue.findIndex((e) => e.id === ex.id);
+                      const buttons: any[] = [];
+                      if (idx > 0) buttons.push({ text: '⬆ 上移', onPress: () => reorderQueue(ex.id, 'up') });
+                      if (idx < routineQueue.length - 1) buttons.push({ text: '⬇ 下移', onPress: () => reorderQueue(ex.id, 'down') });
+                      buttons.push({
+                        text: '移除',
+                        style: 'destructive',
+                        onPress: () => {
+                          removeFromQueue(ex.id);
+                          if (selectedId === ex.id) setSelectedExerciseId(null);
+                        },
+                      });
+                      buttons.push({ text: '取消', style: 'cancel' });
+                      Alert.alert(ex.name, '調整順序或移除', buttons);
                     }}
                     className={`rounded-full px-3 py-1.5 flex-row items-center gap-2 active:opacity-70 ${
                       isActive ? 'bg-kibo-primary' : 'bg-kibo-card'
