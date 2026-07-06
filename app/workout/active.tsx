@@ -311,7 +311,7 @@ export default function ActiveWorkout() {
                     onLongPress={() => {
                       haptic.tapMedium();
                       const idx = routineQueue.findIndex((e) => e.id === ex.id);
-                      const buttons: any[] = [];
+                      const buttons: { text: string; style?: 'destructive' | 'cancel'; onPress?: () => void }[] = [];
                       if (idx > 0) buttons.push({ text: '⬆ 上移', onPress: () => reorderQueue(ex.id, 'up') });
                       if (idx < routineQueue.length - 1) buttons.push({ text: '⬇ 下移', onPress: () => reorderQueue(ex.id, 'down') });
                       buttons.push({
@@ -323,7 +323,7 @@ export default function ActiveWorkout() {
                         },
                       });
                       buttons.push({ text: '取消', style: 'cancel' });
-                      Alert.alert(ex.name, '調整順序或移除', buttons);
+                      Alert.alert(ex.name, '調整順序或移除', buttons, { cancelable: true });
                     }}
                     className={`rounded-full px-3 py-1.5 flex-row items-center gap-2 active:opacity-70 ${
                       isActive ? 'bg-kibo-primary' : 'bg-kibo-card'
