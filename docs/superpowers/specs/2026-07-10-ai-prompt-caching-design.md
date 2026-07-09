@@ -95,3 +95,22 @@ export function openaiCacheParams(baseUrl: string): { prompt_cache_key?: string 
 - Gemini `cachedContents` 明確快取（跨呼叫重用 system instruction + TTL 生命週期）——需裝置/帳單驗證。
 - 快取命中率量測（讀 usage 欄位）。
 - 靜態/動態提示分段以擴大可快取前綴（把 palmRef 等動態段移到 user 訊息）。
+
+## 驗收狀態（2026-07-10 實作完成）
+
+**已自動驗證（本機）：**
+- `npx -y tsx scripts/verify_ai_cache.ts` → ALL PASS (9 checks)：`buildAnthropicSystem`（單 text block、cache_control ephemeral、原文保留）、`openaiCacheParams`（OpenAI→帶 key、兩個 MiniMax→ `{}`）。
+- `npx tsc --noEmit` 全綠。
+- 逐 task 雙審 + 最終整功能審查（f044725..0d3e4c2）＝ **Ready to merge Yes**；**五家路徑零請求語意變更**（判讀輸出不變、不會 400）；gating 字面精確相符。
+
+**實作摘要（2 commits，24df21a..0d3e4c2）：**
+- `ai_cache.ts` 純函數 + 斷言；`ai_provider.ts` Anthropic `system` 改 cache_control block、OpenAI body 併 `prompt_cache_key`（僅 `api.openai.com`）、Gemini 隱式（僅註解）。
+
+**待使用者在裝置/帳單驗收（本機無 API Key 無法驗快取實效）：**
+- 連續多次判讀後，觀察 usage：Anthropic `cache_read_input_tokens` > 0、OpenAI `cached_tokens` > 0、Gemini 2.5 `cachedContentTokenCount` > 0；input 成本下降；判讀結果與現況一致。
+- Anthropic prompt caching 於 `anthropic-version: 2023-06-01` 為 GA（免 beta header）；實測確認 cache_control 被接受。
+
+**已知（列後續，非阻擋）：**
+- Gemini 明確 `cachedContents` 生命週期（跨呼叫重用 + TTL）——本情境淨負且不可驗，延後。
+- `ai_provider.ts` 的 OpenAI baseUrl 字面可改為 import `OPENAI_BASE_URL`（單一真相源；今相符，漂移則安全失效）。
+- 提示僅約 2k tokens → **節省幅度中等**，非大幅。
