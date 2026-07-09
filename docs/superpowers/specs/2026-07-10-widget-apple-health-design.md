@@ -117,3 +117,24 @@
 - Widget 互動（點擊記錄）、多種 widget 尺寸美化、Lock Screen widget。
 - Health 讀取更多型別（睡眠、心率）、雙向睡眠同步。
 - 背景同步（background delivery）；本輪 write 為即時、read 為開啟時查。
+
+## 驗收狀態（2026-07-10 實作完成）
+
+**已自動驗證（本機，僅 TS/純函數）：**
+- `npx -y tsx scripts/verify_health_widget.ts` → ALL PASS (20 checks)（health_core 樣本對應 / widget_core payload 防呆）。
+- `npx tsc --noEmit` 全綠（含 store 接線與設定頁；原生模組走變數名 require + 本地介面，未裝也綠）。
+- 逐 task 雙審 + 最終整功能審查（a1277d1..339ec4c）＝ **Ready to merge Yes**：4 組跨檔契約全對（payload↔SwiftUI KiboToday、App Group `group.app.kibo.fitness` 於 app.json/expo-target/widget_data/swift 四處一致、HK 識別碼/單位、app.json plugins/entitlement）；純加/三重守衛，不破壞既有記錄、Android/Expo Go 不 crash。
+
+**實作摘要（8 commits + 相依，73833ee..339ec4c）：**
+- health_core/widget_core 純函數 + 斷言；health_kit.ts（寫入 4 類 + 讀步數/能量 + 同步開關 + graceful fallback）；widget_data.ts（App Group 寫入 + reload）；deps（healthkit **v14.0.2** + nitro + apple-targets）+ app.json 設定；targets/kibo_widget SwiftUI 骨架；store 接線 4 寫入點 + 設定頁開關/步數顯示 + pushTodayWidget（記餐/完訓/刷新即時更新 widget）。
+
+**⚠️ 使用者在裝置上驗收（本機全無法驗原生）：**
+1. `npx expo prebuild -p ios --clean` → 產出 HealthKit 能力 + kibo_widget target（app group、entitlements）。
+2. EAS dev build（`eas build -p ios --profile development`）裝機。
+3. **對照已安裝的 `@kingstinct/react-native-healthkit` v14 實際 API**，修 `src/lib/health_kit.ts` 的 `HealthKitModule` adapter 函數名/簽名（isHealthDataAvailable/requestAuthorization/saveQuantitySample/saveWorkoutSample/queryStatisticsForQuantity 可能不同）——不符時目前只會靜默 no-op、不 crash。
+4. **workout 寫入**：授權請求需加入 workout 型別（HKWorkoutType，非 SHARE 的 quantity 識別碼），否則 `writeWorkoutToHealth` 靜默失敗。nutrition/water/weight 正常。
+5. 設定頁開「同步 Apple Health」→ 授權面板出現；記飲食/喝水/體重/訓練 → Apple 健康 App 看得到；今日步數/活動能量顯示正確。
+6. 主畫面加入 Kibo widget → 顯示今日摘要；記餐/完訓/喝水後 timeline reload 更新。
+7. Android / 未授權 → App 內功能照常、不 crash。
+
+**列後續（本輪不做）：** Android Health Connect / Android widget；Gemini-style 更多 Health 讀取型別；weight==500 邊界斷言；widget 尺寸美化/互動。
