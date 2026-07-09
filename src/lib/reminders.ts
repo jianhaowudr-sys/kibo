@@ -6,6 +6,7 @@
 
 import * as Notifications from 'expo-notifications';
 import type { HealthSettings, ReminderConfig } from './health_settings';
+import { buildIntervalTriggers, parseHhmm } from './reminders_core';
 
 const CATEGORY_WATER = 'water-quick';
 
@@ -25,34 +26,10 @@ export async function requestPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
-function buildIntervalTriggers(intervalMin: number, win: { startHour: number; endHour: number }): Date[] {
-  const triggers: Date[] = [];
-  const now = new Date();
-  // 排接下來 7 天 × 每天 win 內的觸發點
-  for (let d = 0; d < 7; d++) {
-    const day = new Date(now);
-    day.setDate(now.getDate() + d);
-    day.setHours(win.startHour, 0, 0, 0);
-    while (day.getHours() < win.endHour) {
-      if (day > now) triggers.push(new Date(day));
-      day.setMinutes(day.getMinutes() + intervalMin);
-    }
-  }
-  return triggers;
-}
-
-function nextDailyTrigger(hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = new Date();
-  t.setHours(h, m, 0, 0);
-  if (t <= new Date()) t.setDate(t.getDate() + 1);
-  return t;
-}
-
 async function scheduleWater(config: ReminderConfig) {
   if (!config.enabled || config.type !== 'interval' || !config.intervalMin || !config.activeWindow) return;
-  const triggers = buildIntervalTriggers(config.intervalMin, config.activeWindow);
-  for (const trig of triggers) {
+  const triggers = buildIntervalTriggers(config.intervalMin, config.activeWindow, Date.now());
+  for (const ms of triggers) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '💧 該喝水了',
@@ -60,7 +37,7 @@ async function scheduleWater(config: ReminderConfig) {
         categoryIdentifier: CATEGORY_WATER,
         data: { type: 'water' },
       },
-      trigger: { date: trig } as any,
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(ms) },
     });
   }
 }
@@ -68,10 +45,11 @@ async function scheduleWater(config: ReminderConfig) {
 async function scheduleFixedReminder(content: { title: string; body: string }, fixedTimes: string[] | undefined) {
   if (!fixedTimes || fixedTimes.length === 0) return;
   for (const t of fixedTimes) {
-    const trig = nextDailyTrigger(t);
+    const hm = parseHhmm(t);
+    if (!hm) continue;
     await Notifications.scheduleNotificationAsync({
       content,
-      trigger: { date: trig, repeats: false } as any,
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hm.hour, minute: hm.minute },
     });
   }
 }
