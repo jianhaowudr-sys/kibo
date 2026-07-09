@@ -3,7 +3,7 @@ import type { Pet } from '@/db/schema';
 import * as repo from '@/db/repo';
 import * as healthRepo from '@/db/health_repo';
 import { dateKey } from '@/lib/date';
-import { computeWeeklySummary, pickHighlight, type WeeklyReviewData } from '@/lib/weekly_review_core';
+import { computeWeeklySummary, pickHighlight, computeWeeklyDeltas, isEmptyWeek, type WeeklyReviewData } from '@/lib/weekly_review_core';
 
 export type { WeeklyReviewData } from '@/lib/weekly_review_core';
 
@@ -77,9 +77,15 @@ export async function maybeGenerateWeeklyReview(userId: number, pet: Pet | null)
     const data = await gatherWeeklyReview(userId, weekStart, weekEnd);
 
     // 空週守衛：全無活動 → 不生
-    if (data.workoutCount === 0 && data.mealDays === 0 && data.sleepNights === 0 && data.waterDailyAvgMl === 0) {
+    if (isEmptyWeek(data)) {
       return;
     }
+
+    // 前一週摘要 → 週對週 Δ（前一週空 → 無基準、不顯示箭頭）
+    const prevStart = subWeeks(weekStart, 1);
+    const prevEnd = endOfWeek(prevStart, WEEK_OPTS);
+    const prevData = await gatherWeeklyReview(userId, prevStart, prevEnd);
+    const deltas = computeWeeklyDeltas(data, isEmptyWeek(prevData) ? null : prevData);
 
     await healthRepo.addPetMessage({
       userId,
@@ -88,7 +94,7 @@ export async function maybeGenerateWeeklyReview(userId: number, pet: Pet | null)
       category: 'weekly',
       text: pickHighlight(data),
       read: 0,
-      triggerData: JSON.stringify(data),
+      triggerData: JSON.stringify({ ...data, deltas }),
     });
   } catch (e) {
     console.warn('[weekly] 生成失敗', e);
