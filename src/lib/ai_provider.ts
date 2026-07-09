@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { buildAnthropicSystem, openaiCacheParams } from './ai_cache';
 
 export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'minimax' | 'minimax-cn';
 
@@ -249,6 +250,7 @@ async function callOpenAICompatible(p: {
     },
     body: JSON.stringify({
       model: p.model,
+      ...openaiCacheParams(p.baseUrl),
       temperature: p.temperature,
       max_tokens: p.maxTokens,
       response_format: { type: 'json_object' },
@@ -305,7 +307,7 @@ async function callAnthropic(p: {
       model: p.model,
       max_tokens: p.maxTokens,
       temperature: p.temperature,
-      system: p.systemPrompt,
+      system: buildAnthropicSystem(p.systemPrompt),
       messages: [
         {
           role: 'user',
@@ -351,6 +353,7 @@ async function callGemini(p: {
   apiKey: string; model: string; systemPrompt: string; userPrompt: string;
   base64: string; temperature: number; maxTokens: number;
 }): Promise<string> {
+  // Gemini 2.5 隱式快取預設開啟：靜態 systemInstruction 會自動被快取，無需明確 cachedContents。
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(p.model)}:generateContent?key=${encodeURIComponent(p.apiKey)}`;
   const res = await fetch(url, {
     method: 'POST',
