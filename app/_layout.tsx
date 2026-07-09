@@ -1,5 +1,6 @@
 import '../global.css';
 import 'react-native-get-random-values';
+import '@/lib/notifications_setup';
 import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
