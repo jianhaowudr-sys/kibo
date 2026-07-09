@@ -252,6 +252,27 @@ type Actions = {
   confirmHatch: (petName: string) => Promise<void>;
 };
 
+/**
+ * 共用：把當前 store 狀態彙整成 WidgetInput 並推給 iOS widget。
+ * fire-and-forget、iOS-only、graceful no-op（updateWidget 內部已 try/catch，不會 throw）。
+ * 缺的欄位由 buildWidgetPayload 純函數補 0。refreshHealth／addMeal／finishWorkout 共用同一份邏輯，避免分岔。
+ */
+function pushTodayWidget(state: State): void {
+  const u = state.user;
+  if (!u) return;
+  const todayWorkoutsCount = state.recentWorkouts.filter((w) => {
+    return new Date(w.startedAt).toDateString() === new Date().toDateString();
+  }).length;
+  updateWidget({
+    dateKey: todayKey(),
+    caloriesEaten: state.todayNutrition.calories,
+    caloriesTarget: u.dailyCaloriesGoal,
+    workouts: todayWorkoutsCount,
+    waterMl: state.waterToday.reduce((s, w) => s + (w.amountMl ?? 0), 0),
+    waterTargetMl: state.healthSettings.water.dailyGoalMl,
+  });
+}
+
 export const useAppStore = create<State & Actions>()((set, get) => ({
   user: null,
   exercises: [],
@@ -556,6 +577,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     // 訓練完成 → 動圈勾掉 → 觸發 Trinity 檢查
     try { await get().checkTrinityCompletion(); } catch {}
     get().enqueueSync?.();
+    pushTodayWidget(get());
 
     return { workoutId: currentWorkoutId, totalExp, hatched };
   },
@@ -766,6 +788,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     await get().refreshTodayMeals();
     await get().awardLiberation('meal', { sourceId: id });
     get().enqueueSync?.();
+    pushTodayWidget(get());
     return id;
   },
 
@@ -938,17 +961,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       streakFreezeTokens: tokens,
     });
     // widget 今日彙整更新（fire-and-forget、iOS-only、graceful no-op；缺的欄位由純函數補 0）
-    const todayWorkoutsCount = get().recentWorkouts.filter((w) => {
-      return new Date(w.startedAt).toDateString() === new Date().toDateString();
-    }).length;
-    updateWidget({
-      dateKey: today,
-      caloriesEaten: get().todayNutrition.calories,
-      caloriesTarget: u.dailyCaloriesGoal,
-      workouts: todayWorkoutsCount,
-      waterMl: water.reduce((s, w) => s + (w.amountMl ?? 0), 0),
-      waterTargetMl: get().healthSettings.water.dailyGoalMl,
-    });
+    pushTodayWidget(get());
     // 任何健康資料變動後檢查 Trinity 完成
     try { await get().checkTrinityCompletion(); } catch {}
   },
