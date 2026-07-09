@@ -2,7 +2,8 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { nutritionSamples, waterSample, weightSample, HK_ID, type HKQuantityInput } from './health_core';
 
-// 本地最小介面（避免 static import 未裝相依；裝置 build 時對照 @kingstinct/react-native-healthkit v9 實際 API 調整）。
+// 本地最小介面（避免 static import；裝置 build 時**務必**對照已安裝的 @kingstinct/react-native-healthkit v14 實際 API 調整
+// 此 adapter 的函數名/簽名——v14 為 Nitro 版，名稱可能與此不同；不符時只會靜默 no-op（graceful），不會 crash）。
 type HealthKitModule = {
   isHealthDataAvailable: () => boolean;
   requestAuthorization: (share: string[], read: string[]) => Promise<boolean>;

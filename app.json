@@ -17,12 +17,19 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.kibo.fitness",
       "buildNumber": "13",
+      "appleTeamId": "XGY266T6Y8",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.app.kibo.fitness"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "Kibo 需要相機權限以拍攝食物 / 營養標 / InBody 報告，由 AI 自動辨識熱量與數值。",
         "NSPhotoLibraryUsageDescription": "Kibo 需要照片權限以選擇食物 / 營養標 / InBody 圖片進行 AI 辨識。",
         "NSPhotoLibraryAddUsageDescription": "Kibo 需要寫入相簿權限以儲存匯出的訓練 / 飲食紀錄備份檔。",
-        "LSApplicationQueriesSchemes": ["jkopay", "line"]
+        "LSApplicationQueriesSchemes": [
+          "jkopay",
+          "line"
+        ]
       }
     },
     "android": {
@@ -49,7 +56,16 @@
       "expo-font",
       "expo-asset",
       "expo-web-browser",
-      "./plugins/with-google-play-token"
+      "./plugins/with-google-play-token",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Kibo 讀取你的步數與活動能量，顯示每日活動量。",
+          "NSHealthUpdateUsageDescription": "Kibo 將你記錄的訓練、營養、喝水與體重寫入 Apple 健康，集中管理。",
+          "background": false
+        }
+      ],
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true
