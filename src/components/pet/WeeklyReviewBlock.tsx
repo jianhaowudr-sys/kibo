@@ -3,13 +3,22 @@ import { View, Text } from 'react-native';
 import { format } from 'date-fns';
 import { useThemePalette } from '@/lib/useThemePalette';
 import type { PetMessage } from '@/db/schema';
-import type { WeeklyReviewData } from '@/lib/weekly_review_core';
+import type { WeeklyReviewData, MetricDelta } from '@/lib/weekly_review_core';
 
-function Tile({ label, value, color, palette }: { label: string; value: string; color?: string; palette: any }) {
+function Tile({ label, value, color, palette, delta, format }: { label: string; value: string; color?: string; palette: any; delta?: MetricDelta; format?: (n: number) => string }) {
+  const arrow = delta ? (delta.dir === 'up' ? '↑' : delta.dir === 'down' ? '↓' : '→') : null;
+  const deltaText = delta
+    ? delta.dir === 'flat'
+      ? '→ 持平'
+      : `${arrow} ${format ? format(Math.abs(delta.diff)) : Math.abs(delta.diff)}`
+    : null;
   return (
     <View style={{ flex: 1, backgroundColor: palette.card, borderRadius: 8, padding: 8 }}>
       <Text style={{ color: palette.mute, fontSize: 10 }}>{label}</Text>
       <Text style={{ color: color ?? palette.text, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{value}</Text>
+      {deltaText != null && (
+        <Text style={{ color: palette.mute, fontSize: 10, marginTop: 1 }}>{deltaText}</Text>
+      )}
     </View>
   );
 }
@@ -41,15 +50,16 @@ export function WeeklyReviewBlock({ message }: { message: PetMessage }) {
   }
 
   const waterL = (data.waterDailyAvgMl / 1000).toFixed(1); // 與 pickHighlight 同步：統一 1 位小數
+  const d = data.deltas;
   const row1 = [
-    { label: '訓練', value: `${data.workoutCount} 次`, color: palette.success },
-    { label: '睡眠均', value: `${data.sleepHoursAvg}h`, color: palette.primary },
-    { label: '熱量均', value: `${data.calorieAvg}` },
+    { label: '訓練', value: `${data.workoutCount} 次`, color: palette.success, delta: d?.workoutCount, format: (n: number) => `${n} 次` },
+    { label: '睡眠均', value: `${data.sleepHoursAvg}h`, color: palette.primary, delta: d?.sleepHoursAvg, format: (n: number) => `${n.toFixed(1)}h` },
+    { label: '熱量均', value: `${data.calorieAvg}`, delta: d?.calorieAvg, format: (n: number) => `${n}` },
   ];
   const row2 = [
-    { label: '蛋白質均', value: `${data.proteinAvg}g` },
-    { label: '喝水均', value: `${waterL}L` },
-    { label: '飲食天數', value: `${data.mealDays} 天` },
+    { label: '蛋白質均', value: `${data.proteinAvg}g`, delta: d?.proteinAvg, format: (n: number) => `${n}g` },
+    { label: '喝水均', value: `${waterL}L`, delta: d?.waterDailyAvgMl, format: (n: number) => `${(n / 1000).toFixed(1)}L` },
+    { label: '飲食天數', value: `${data.mealDays} 天`, delta: d?.mealDays, format: (n: number) => `${n} 天` },
   ];
 
   return (
