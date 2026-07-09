@@ -1,5 +1,16 @@
 // 每週回顧純函數：零 import（node 可直接跑，見 scripts/verify_weekly_review.ts）。
 
+export type MetricDelta = { diff: number; dir: 'up' | 'down' | 'flat' };
+
+export type WeeklyDeltas = {
+  workoutCount?: MetricDelta;
+  calorieAvg?: MetricDelta;
+  proteinAvg?: MetricDelta;
+  sleepHoursAvg?: MetricDelta;
+  waterDailyAvgMl?: MetricDelta;
+  mealDays?: MetricDelta;
+};
+
 export type WeeklyReviewData = {
   weekStartKey: string;
   weekEndKey: string;
@@ -11,6 +22,7 @@ export type WeeklyReviewData = {
   sleepHoursAvg: number;
   sleepNights: number;
   waterDailyAvgMl: number;
+  deltas?: WeeklyDeltas;
 };
 
 export type WeeklySummaryInput = {
@@ -56,4 +68,28 @@ export function pickHighlight(d: WeeklyReviewData): string {
   if (d.mealDays >= 6) return `飲食 ${d.mealDays} 天都有記，超自律！`;
   if (d.waterDailyAvgMl >= 2000) return `喝水達標，${(d.waterDailyAvgMl / 1000).toFixed(1)} L／天！`;
   return '這週有動有記，繼續保持！';
+}
+
+function metricDelta(cur: number, prev: number): MetricDelta {
+  const diff = Math.round((cur - prev) * 10) / 10; // 清浮點誤差；整數項維持整數
+  const dir: MetricDelta['dir'] = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+  return { diff, dir };
+}
+
+/** 本週 vs 前一週每項 Δ。prev 為 null（無基準）→ 回 {}。 */
+export function computeWeeklyDeltas(cur: WeeklyReviewData, prev: WeeklyReviewData | null): WeeklyDeltas {
+  if (!prev) return {};
+  return {
+    workoutCount: metricDelta(cur.workoutCount, prev.workoutCount),
+    calorieAvg: metricDelta(cur.calorieAvg, prev.calorieAvg),
+    proteinAvg: metricDelta(cur.proteinAvg, prev.proteinAvg),
+    sleepHoursAvg: metricDelta(cur.sleepHoursAvg, prev.sleepHoursAvg),
+    waterDailyAvgMl: metricDelta(cur.waterDailyAvgMl, prev.waterDailyAvgMl),
+    mealDays: metricDelta(cur.mealDays, prev.mealDays),
+  };
+}
+
+/** 空週：全無活動（＝生成守衛條件）。 */
+export function isEmptyWeek(d: WeeklyReviewData): boolean {
+  return d.workoutCount === 0 && d.mealDays === 0 && d.sleepNights === 0 && d.waterDailyAvgMl === 0;
 }

@@ -1,5 +1,5 @@
 // weekly_review_core 純函數斷言。執行：npx -y tsx scripts/verify_weekly_review.ts
-import { computeWeeklySummary, pickHighlight, type WeeklySummaryInput } from '../src/lib/weekly_review_core';
+import { computeWeeklySummary, pickHighlight, computeWeeklyDeltas, isEmptyWeek, type WeeklySummaryInput } from '../src/lib/weekly_review_core';
 
 let passed = 0;
 function check(name: string, cond: boolean): void {
@@ -58,5 +58,27 @@ check('亮點: 飲食自律', pickHighlight(dataFor({ mealDays: 6 })) === '飲�
 check('亮點: 喝水達標', pickHighlight(dataFor({ waterDailyAvgMl: 2000 })) === '喝水達標，2.0 L／天！');
 check('亮點: fallback', pickHighlight(dataFor({ mealDays: 1 })) === '這週有動有記，繼續保持！');
 check('亮點: 規則順序（訓練次數優先於飲食）', pickHighlight(dataFor({ workoutDays: 4, workoutCount: 5, mealDays: 6 })) === '這週練了 5 次，很穩！');
+
+// ---- computeWeeklyDeltas ----
+check('Δ: prev null → {}', JSON.stringify(computeWeeklyDeltas(dataFor({ workoutCount: 3 }), null)) === '{}');
+{
+  const d = computeWeeklyDeltas(dataFor({ workoutCount: 5, calorieAvg: 1800, mealDays: 6 }), dataFor({ workoutCount: 3, calorieAvg: 2000, mealDays: 6 }));
+  check('Δ: 訓練 up +2', d.workoutCount?.dir === 'up' && d.workoutCount?.diff === 2);
+  check('Δ: 熱量 down -200', d.calorieAvg?.dir === 'down' && d.calorieAvg?.diff === -200);
+  check('Δ: 飲食天數 flat 0', d.mealDays?.dir === 'flat' && d.mealDays?.diff === 0);
+}
+{
+  const d = computeWeeklyDeltas(dataFor({ sleepHoursAvg: 7.2 }), dataFor({ sleepHoursAvg: 6.8 }));
+  check('Δ: 睡眠浮點清理 +0.4', d.sleepHoursAvg?.dir === 'up' && d.sleepHoursAvg?.diff === 0.4);
+}
+{
+  const d = computeWeeklyDeltas(dataFor({ waterDailyAvgMl: 2300 }), dataFor({ waterDailyAvgMl: 2000 }));
+  check('Δ: 喝水 up +300', d.waterDailyAvgMl?.dir === 'up' && d.waterDailyAvgMl?.diff === 300);
+}
+// ---- isEmptyWeek ----
+check('空週: 全 0 → true', isEmptyWeek(dataFor({})) === true);
+check('空週: 有訓練 → false', isEmptyWeek(dataFor({ workoutCount: 1 })) === false);
+check('空週: 只有喝水 → false', isEmptyWeek(dataFor({ waterDailyAvgMl: 500 })) === false);
+check('空週: 只有睡眠夜數 → false', isEmptyWeek(dataFor({ sleepNights: 1 })) === false);
 
 console.log(`ALL PASS (${passed} checks)`);
