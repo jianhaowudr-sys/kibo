@@ -88,3 +88,22 @@
 
 - 水提醒總量上限（避免 iOS 64 則靜默丟棄）——需要重新設計列舉/改用 channel 或動態補排。
 - 通知內容依使用者暱稱／寵物口吻個人化。
+
+## 驗收狀態（2026-07-10 實作完成）
+
+**已自動驗證（本機）：**
+- `npx -y tsx scripts/verify_reminders.ts` → ALL PASS (23 checks)：`buildIntervalTriggers`（視窗邊界／只取未來／7 天／跨日／無效間隔）+ `parseHhmm`（合法／單位數／超界／壞字串）。
+- `npx tsc --noEmit` 全綠。
+- 逐 task 雙審 + 最終整功能審查（e0c7c2f..bb71e50）＝ **Ready to merge Yes**；三個 Minor 皆 defer（無阻擋）。
+- Bonus：全域 `setNotificationHandler` 讓先前的 rest_timer 前景也會跳 banner。
+
+**實作摘要（3 commits，fa2693c..bb71e50）：**
+- `reminders_core.ts` 純函數 + 斷言；`reminders.ts` 水＝`DATE`、固定提醒＝`DAILY` 每日重複；`notifications_setup.ts` 全域 `setNotificationHandler`（SDK54 `shouldShowBanner`/`shouldShowList`）接 `_layout.tsx`。
+
+**待使用者在實機驗收：**
+- 喝水提醒前景到點跳 banner + 響；排便／睡眠 HH:MM 到點跳、且**隔天再跳一次**（驗 DAILY 每日重複）；背景／鎖屏照跳；關掉提醒 → 不再跳。
+- Android heads-up banner 另需通知 channel importance = HIGH（本輪未設，裝置上觀察；列後續）。
+
+**列後續（本輪不做）：**
+- iOS 64 則待觸發上限（水提醒 7 天列舉可能超額被靜默丟棄）。
+- Android HIGH importance channel（heads-up banner）。
