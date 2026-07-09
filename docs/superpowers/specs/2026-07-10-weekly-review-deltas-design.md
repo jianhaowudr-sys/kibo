@@ -91,3 +91,20 @@ export type WeeklyDeltas = {
 | 舊 `triggerData` 無 deltas 欄 | `deltas?` 選填；卡片缺 delta 不畫箭頭（防呆已在） |
 | 生成時多撈一週 = 多幾次 DB 查詢 | 背景執行（`runBackgroundStartup`），且每週僅生成一次（冪等去重），成本可忽略 |
 | 浮點誤差（睡眠時數相減） | `round(diff*10)/10` 清理 |
+
+## 驗收狀態（2026-07-10 實作完成）
+
+**已自動驗證（本機）：**
+- `npx -y tsx scripts/verify_weekly_review.ts` → ALL PASS (24 checks)（原 14 + `computeWeeklyDeltas`/`isEmptyWeek` 10）。
+- `npx tsc --noEmit` 全綠。
+- 逐 task 雙審 + 最終整功能審查（b8f7584..0f261ac）＝ **Ready to merge Yes**；跨 task 的 delta key-name + 單位契約一致、舊卡相容、無其他 `triggerData` 消費者。
+
+**實作摘要（3 commits，87cacae..0f261ac）：**
+- `weekly_review_core.ts` 加 `MetricDelta`/`WeeklyDeltas`/選填 `deltas?` + `computeWeeklyDeltas`/`isEmptyWeek`（純、斷言）；`weekly_review.ts` 生成時撈前一週算 Δ 存 `{ ...data, deltas }`、空週守衛改 `isEmptyWeek`；`WeeklyReviewBlock` 每格顯示 ↑/↓/→（中性色，flat＝「→ 持平」）。
+
+**待使用者在實機驗收：**
+- 連兩週有資料 → 新一週回顧卡每格顯示 ↑/↓/→ + 變化量；前一週無資料 → 無箭頭；舊回顧卡（無 deltas）畫面同現況只是無箭頭。
+
+**已知 cosmetic（列後續，非阻擋）：**
+- 水的週對週變化 <50ml/日 時顯示「↑ 0.0L」（方向正確、幅度四捨五入為 0.0L；沿用水格既有 1 位小數）。若要更精細可小量時改以 ml 顯示。
+- `WeeklyReviewBlock` 的 `Tile` `format` prop 名遮蔽 date-fns `format`（無 bug，可改名 `formatDelta`）。
