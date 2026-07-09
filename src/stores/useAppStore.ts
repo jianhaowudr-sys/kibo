@@ -7,6 +7,8 @@ import { DEFAULT_HEALTH_SETTINGS, parseHealthSettings, stringifyHealthSettings, 
 import { QUICK_ADD_BATCH_MS } from '@/lib/gestures';
 import * as healthRepo from '@/db/health_repo';
 import { swapAdjacent } from '@/lib/rest_timer_core';
+import { writeWaterToHealth, writeNutritionToHealth, writeWorkoutToHealth, writeWeightToHealth } from '@/lib/health_kit';
+import { updateWidget } from '@/lib/widget_data';
 
 export type PlannedSet = {
   key: string;
@@ -477,6 +479,11 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
 
     await repo.finishWorkout(currentWorkoutId, { totalExp, totalVolume, durationSec, note });
 
+    // Apple Health 寫入（fire-and-forget，不擋主流程；此 action 內無現成 kcal 值故省略）
+    const workoutEndAt = new Date();
+    const workoutStartAt = workoutStartedAt ? new Date(workoutStartedAt) : new Date(workoutEndAt.getTime() - durationSec * 1000);
+    void writeWorkoutToHealth({ start: workoutStartAt, end: workoutEndAt });
+
     const today = todayKey();
     let streak = user.streak;
     let tokenDelta = 0;
@@ -693,6 +700,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const bodyId = await repo.createBodyMeasurement({ ...data, userId: user.id });
     if (data.weightKg) {
       await repo.updateUser(user.id, { weightKg: data.weightKg });
+      void writeWeightToHealth(data.weightKg);
     }
     await get().refreshBodyMeasurements();
     await get().refreshUser();
@@ -749,6 +757,12 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const { user } = get();
     if (!user) throw new Error('no user');
     const id = await repo.createMeal({ ...data, userId: user.id });
+    void writeNutritionToHealth({
+      calories: data.caloriesKcal ?? undefined,
+      protein: data.proteinG ?? undefined,
+      carb: data.carbG ?? undefined,
+      fat: data.fatG ?? undefined,
+    });
     await get().refreshTodayMeals();
     await get().awardLiberation('meal', { sourceId: id });
     get().enqueueSync?.();
@@ -923,6 +937,18 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       petMessages: msgs,
       streakFreezeTokens: tokens,
     });
+    // widget 今日彙整更新（fire-and-forget、iOS-only、graceful no-op；缺的欄位由純函數補 0）
+    const todayWorkoutsCount = get().recentWorkouts.filter((w) => {
+      return new Date(w.startedAt).toDateString() === new Date().toDateString();
+    }).length;
+    updateWidget({
+      dateKey: today,
+      caloriesEaten: get().todayNutrition.calories,
+      caloriesTarget: u.dailyCaloriesGoal,
+      workouts: todayWorkoutsCount,
+      waterMl: water.reduce((s, w) => s + (w.amountMl ?? 0), 0),
+      waterTargetMl: get().healthSettings.water.dailyGoalMl,
+    });
     // 任何健康資料變動後檢查 Trinity 完成
     try { await get().checkTrinityCompletion(); } catch {}
   },
@@ -947,6 +973,7 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     const beforeTotal = get().waterToday.reduce((s, w) => s + (w.amountMl ?? 0), 0);
     const goal = get().healthSettings.water.dailyGoalMl;
     const id = await healthRepo.addWater({ userId: u.id, amountMl, loggedAt: now, batchKey });
+    void writeWaterToHealth(amountMl);
     await get().refreshHealth();
     // 第一次達標才加分（避免重複）
     if (beforeTotal < goal && beforeTotal + amountMl >= goal) {

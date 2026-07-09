@@ -1,10 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert, Platform } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
 import { isOffLookupEnabled, setOffLookupEnabled } from '@/lib/food_lookup';
+import {
+  isHealthAvailable,
+  getHealthSyncEnabled,
+  setHealthSyncEnabled,
+  requestHealthPermissions,
+  readTodaySteps,
+  readTodayActiveEnergy,
+} from '@/lib/health_kit';
 
 const CUP_PRESETS = [200, 250, 300, 350, 400];
 const BOTTLE_PRESETS = [500, 600, 750, 1000];
@@ -51,6 +59,41 @@ export default function HealthSettings() {
   const [scanOpen, setScanOpen] = useState(false);
   const [offEnabled, setOffEnabled] = useState(true);
   useEffect(() => { isOffLookupEnabled().then(setOffEnabled); }, []);
+
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [healthAvailable, setHealthAvailable] = useState(false);
+  const [healthSyncOn, setHealthSyncOn] = useState(false);
+  const [todaySteps, setTodaySteps] = useState(0);
+  const [todayEnergy, setTodayEnergy] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || !isHealthAvailable()) return;
+    setHealthAvailable(true);
+    getHealthSyncEnabled().then((on) => {
+      setHealthSyncOn(on);
+      if (on) {
+        readTodaySteps().then(setTodaySteps);
+        readTodayActiveEnergy().then(setTodayEnergy);
+      }
+    });
+  }, []);
+
+  const onToggleHealthSync = async (v: boolean) => {
+    if (v) {
+      const ok = await requestHealthPermissions();
+      if (ok) {
+        await setHealthSyncEnabled(true);
+        setHealthSyncOn(true);
+        readTodaySteps().then(setTodaySteps);
+        readTodayActiveEnergy().then(setTodayEnergy);
+      } else {
+        Alert.alert('無法啟用', '請至「設定 App ＞ 隱私權與安全性 ＞ 健康」授權 Kibo 存取健康資料後再試一次。');
+      }
+    } else {
+      await setHealthSyncEnabled(false);
+      setHealthSyncOn(false);
+    }
+  };
 
   const Section = ({ title, open, onToggle, children }: any) => (
     <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
@@ -344,6 +387,17 @@ export default function HealthSettings() {
           關閉後只用「已掃過的本地紀錄」與「拍營養標」，不會聯網。
         </Text>
       </Section>
+
+      {Platform.OS === 'ios' && healthAvailable && (
+        <Section title="🍎 Apple Health" open={healthOpen} onToggle={() => setHealthOpen(!healthOpen)}>
+          <RowSwitch label="同步 Apple Health" value={healthSyncOn} onChange={onToggleHealthSync} />
+          {healthSyncOn && (
+            <Text style={{ color: palette.mute, fontSize: 12, marginTop: 4 }}>
+              今日 · 步數 {todaySteps} ・ 活動能量 {todayEnergy} kcal
+            </Text>
+          )}
+        </Section>
+      )}
     </ScrollView>
   );
 }
