@@ -9,6 +9,22 @@
 專案:Expo SDK54 / RN 0.81 / TS / expo-router / zustand / drizzle+expo-sqlite(22 表)/ Supabase 鏡像。已上架雙平台 v1.0.7,有既有使用者 → **本地 DB 只能加法遷移;Supabase migration 手動跑、線上 schema 有 out-of-band 漂移**。
 專案既有模式(必須遵循):純函數抽 `src/lib/*_core.ts`(零 import)+ `scripts/verify_*.ts` 斷言 + tsc(無 jest);「主線批次」SDD 工作流(每批 spec→plan→tasks→review,2-6 tasks,可獨立 merge/發版)。
 
+## 精修決策(2026-07-11,Opus 逐項審查後定案)
+
+四個產品層取捨已由使用者拍板:
+1. **D2 不拆,一次做完整**(UUID + orphan-reconcile 單批)。
+2. **006 gate 方式**:用 App Store Connect / Play Console 的**版本分佈**看採用率(app 內無任何 analytics——已 grep 確認零 telemetry),舊版占比夠低才跑 006;**不**用「逼舊版失敗促升級」當手段。
+3. **喝水提醒改固定每日重複時間**(iOS DAILY repeating trigger),取代原「列舉 interval + 縮 horizon」;永久有效、不怕使用者沒開 app、只占少數 slot。設定 UX 從「每 N 分」改為「這些時間」。
+4. **Supabase 005/006 先在測試專案演練**再上 prod;不論如何**先跑唯讀探測 SQL** 撈線上真實 schema。
+
+Opus 核對程式碼後的修正(已併入下方批次):
+- D1-1 排序:`eggs.pet_id` 是純 integer 無 FK,只有 `pets.egg_id→eggs.id` 是真 reference → 無循環,只需 eggs 在 pets 前、users 最前。
+- D2 natural key:14 表僅 `period_days.day_key`、`achievements.code` 是真唯一鍵,其餘 ~11 靠 ms 時間戳。reconcile 規則收緊為「**唯一一筆候選相符才 claim,多筆/零筆一律當 orphan**」。
+- D2 pushProfile 對齊須涵蓋 `users` 全欄(含 v1.0.2 的 `consecutive_days/last_active_day/next_egg_rarity_floor`),非只計畫原寫的 4 欄。
+- D3-1 FK 啟用**風險上調**(非單純 P2):在已上架、FK 目前為 OFF 的 app 上開啟強制,會讓現有靜默成功的 orphan 寫入開始報錯 → 需 orphan sweep + 完整迴歸,到 D3 時再細評。
+
+---
+
 ## 巡檢結論(濃縮)
 
 **架構健康度 C+**:功能豐富、局部工藝優秀(`*_core.ts` 分層、RestTimer 背景計時、兩段式 AI 判讀、RLS 全表正確、empty state 覆蓋好),但**資料層有 P0 級遺失風險**。
@@ -51,7 +67,7 @@ warning token 未定義、period 頁顯英文 enum、版本字串 v1.2 vs 1.0.7�
 
 ### 批 D1:備份止血(P0-1/2 + resetDatabase)→ 最優先
 Scope guard:不碰 cloud_sync、不碰 Supabase、純本地加法。
-- **D1-1** 新檔 `src/db/tables.ts`:`ALL_TABLES`(22 張,拓撲排序父先子後;eggs 先於 pets)。唯一真相來源。驗證:新 `scripts/verify_table_registry.ts` 用 drizzle `getTableConfig` 斷言 22==22 + 順序滿足 FK。
+- **D1-1** 新檔 `src/db/tables.ts`:`ALL_TABLES`(22 張,拓撲排序父先子後)。**排序約束(核對後)**:users 最前(全表 →users.id);eggs 先於 pets(唯一真 FK `pets.egg_id→eggs.id`;`eggs.pet_id` 是純 integer 無 FK,不構成循環);exercises 先於 routine_exercises/workout_sets;routines 先於 routine_exercises;workouts 先於 workout_sets。唯一真相來源。驗證:新 `scripts/verify_table_registry.ts` 用 drizzle `getTableConfig` 斷言 22==22 + 順序滿足 FK。
 - **D1-2** 新檔 `src/lib/backup_core.ts`(零 import):`BACKUP_SCHEMA_VERSION=4`;`validateBackupFile`(缺版本/`>4` 拒,1..4 收);`tablesToImport`= file∩known(v3 舊檔只 replace 它有的 11 張,其餘不動——天然向下相容);`planTableInsert`(檔案欄∩live 欄交集,缺欄用 DB default)。驗證:新 `scripts/verify_backup_core.ts`。
 - **D1-3** 改寫 `src/lib/backup.ts`:`serializeAll`(迭代 ALL_TABLES,讀失敗 **throw** 不再塞空);importAll 新流程=(1)驗證在任何刪除前 (2)safety-net:匯入前先 serializeAll 存 `documentDirectory/backups/pre_import_<ts>.json` 留 2 份 (3)`sqliteDb.withExclusiveTransactionAsync` 包整個 DELETE+INSERT,insert 失敗 throw → ROLLBACK (4)回傳含 skippedTables/columns warnings,me.tsx 顯示。
 - **D1-4** `migrate.ts` resetDatabase 改迭代 `ALL_TABLES.slice().reverse()` DROP 全 22 張再 ensureSchema。
@@ -62,18 +78,22 @@ Scope guard:不做 CRDT/LWW(明確決策:**不做** updated_at LWW——「本�
 - **核心方案**:14 張同步表加 client 端 UUID 作同步主鍵。
   - 本地:runAdditions 加法遷移 `ADD COLUMN sync_uuid TEXT` + 純 SQL backfill `UPDATE t SET sync_uuid=lower(hex(randomblob(16))) WHERE sync_uuid IS NULL` + unique index。新列 **lazy backfill**(fullSync 開頭重跑 UPDATE),寫入路徑零改動。
   - 雲端 `005_sync_uuid_and_alignment.sql`(全冪等):(a) CREATE TABLE IF NOT EXISTS ×5(water/bowel/sleep/period/custom_foods,含 RLS + unique(user_id,local_id) → **v1.0.7 的健康 push 立刻開始成功,免費止血**)(b) 這 5 表逐欄 add column if not exists 收斂手建表 (c) profiles 補 4 欄(text 不用 jsonb)→ 修 pushProfile 炸點 (d) 14 表加 client_uuid + partial unique index + 4 個父鏈 uuid 欄(workout_sets.workout_client_uuid 等)。**不 drop 任何東西**。
-  - **Reconcile(claim-or-orphan)**:fullSync 對 `client_uuid is null` 的雲端列——local_id 存在本地**且 natural key 相符**(workouts=started_at、meals=(logged_at,meal_type)、period_days=day_key、achievements=code、body=measured_at、routines=(created_at,name)、routine_exercises=(父連結,order_idx)、workout_sets=(父連結,order_idx,created_at)、eggs/pets=created_at、custom_foods=(name,created_at)、water=(logged_at,amount_ml)、bowel=logged_at、sleep=(bedtime_at,wake_at))→ claim 回寫 uuid;不符 → **orphan 匯入本地成新列**(重裝前的舊資料被救回)。local_id 重映用兩段式負值避 unique 撞。
+  - **Reconcile(claim-or-orphan)**:fullSync 對 `client_uuid is null` 的雲端列——local_id 存在本地**且 natural key 相符**(workouts=started_at、meals=(logged_at,meal_type)、period_days=day_key【真唯一鍵】、achievements=code【真唯一鍵】、body=measured_at、routines=(created_at,name)、routine_exercises=(父連結,order_idx)、workout_sets=(父連結,order_idx,created_at)、eggs/pets=created_at、custom_foods=(name,created_at)、water=(logged_at,amount_ml)、bowel=logged_at、sleep=(bedtime_at,wake_at))→ claim 回寫 uuid;不符 → **orphan 匯入本地成新列**(重裝前的舊資料被救回)。**安全規則(Opus 收緊)**:僅 `period_days`/`achievements` 是真唯一鍵;其餘靠 ms 時間戳,故 claim 條件為「**本地恰有唯一一筆候選相符才 claim,零筆或多筆一律當 orphan**」——寧可多匯入一列也不誤併。local_id 重映用兩段式負值避 unique 撞。
   - Push 拆兩批:uuid 已在雲端 → upsert on (user_id,client_uuid) 不帶 local_id;新列 → insert,23505 撞號 → 隨機 local_id(1e9..2^31-1)重試 ≤3。維持 500 筆 chunk。
   - Pull 擴到全 14 張(修不對稱),比對鍵=uuid,插入前 natural-key adopt 防重(擋「匯入 pre-UUID 備份後 uuid 再生」的重複),**不再指定 id: local_id**,子表用父 uuid 對映(fallback legacy workout_local_id)。順序:routines→routine_exercises;workouts→workout_sets;eggs→pets→回填 eggs.pet_id。
-  - pushProfile defensive:try/catch,42703/PGRST204 → 001+003 欄位子集重試,仍敗 → warnings 不 throw;pushHealthTables/pushCustomFoods 的 catch{} 改浮出 warnings。
+  - pushProfile defensive:try/catch,42703/PGRST204 → 用**已知存在的欄位子集**重試(以 001+003 為底,涵蓋 `users` 全欄含 v1.0.2 的 consecutive_days/last_active_day/next_egg_rarity_floor),仍敗 → warnings 不 throw;pushHealthTables/pushCustomFoods 的 catch{} 改浮出 warnings。
   - Capability probe:fullSync 開頭 select client_uuid limit 1,失敗(005 未跑)→ 走 legacy 路徑 → 「先出 app 或先跑 migration」兩序皆安全。
   - tombstone:repo.ts enqueue 帶 sync_uuid;delete 條件改 client_uuid,null 舊佇列項 fallback local_id。
-- **佈署時序(關鍵)**:探測 SQL(唯讀 information_schema/pg_constraint,結果存 `supabase/migrations/PROBE_*.md`)→ 005(純加法,v1.0.7 不受影響)→ 上架 v1.0.8 → 採用率 ≥80% 或 2-4 週 → `006_drop_legacy_unique.sql`(drop unique(user_id,local_id) 換普通 index;之後 v1.0.7 push 可見失敗促升級,有意設計)。006 前必須確認 v1.0.8 正常,跑了就不可逆。
+- **佈署時序(關鍵,決策 2+4)**:
+  1. 唯讀探測 SQL(information_schema/pg_constraint,結果存 `supabase/migrations/PROBE_*.md`)——**必做前提**,先知道線上真實 schema 與舊 unique 約束的實際名稱。
+  2. 在**測試 Supabase 專案**演練 005→006 全流程(決策 4)。
+  3. 005(純加法,v1.0.7 不受影響)上 prod → 上架含 UUID 同步的版本。
+  4. **006 gate**:透過 App Store Connect / Play Console 的**版本分佈**觀察採用率(app 內無 analytics,無法在端內量),舊版占比夠低(建議 <10%)才跑 `006_drop_legacy_unique.sql`(drop unique(user_id,local_id) 換普通 index)。**注意**:006 跑完後未升級的舊版 client push 會失敗——這是接受的代價,故必須等版本分佈確認舊版已少;跑了不可逆。
 - 檔案:migrate.ts、新 `src/lib/sync_core.ts`(naturalKeyOf/planReconcile/planPull/chunk)、cloud_sync.ts、repo.ts、supabase/migrations/005+006。
 - 驗證:新 `scripts/verify_sync_core.ts` fixtures 必測:重裝情境(cloud 100 列+local 撞號 3 列 → 0 覆蓋 100 orphan 匯入)、換機還原、備份匯入後 adopt 零重複、兩段式重映無碰撞。005/006 先在**測試 Supabase 專案**演練全流程。
 
 ### 批 D3:本地強健化(P2)
-- **D3-1** FK 啟用:先 orphan sweep(sentinel gate;刪 workout_sets 無父、routine_exercises 無父、pets.egg_id 懸空置 null)再 `PRAGMA foreign_keys=ON`(client.ts 開檔後)。回滾=拿掉一行。
+- **D3-1** FK 啟用(**風險上調,非單純 P2**):在已上架、FK 目前 OFF 的 app 上開啟強制,會讓現有靜默成功的 orphan 寫入/亂序寫入開始報錯 → 需先 orphan sweep(sentinel gate;刪 workout_sets 無父、routine_exercises 無父、pets.egg_id 懸空置 null)+ **完整功能迴歸**(建/刪課表、finishWorkout、importAll、cloud pull 亂序插入)才可 `PRAGMA foreign_keys=ON`(client.ts 開檔後)。注意 D2 的 pull 若曾靠 FK-off 亂序插入,啟用後須確保父先子後。回滾=拿掉一行。
 - **D3-2** 交易化:finishWorkout、ensureSchema seed、bootstrap 包 `withExclusiveTransactionAsync`(注意不與 importAll 巢狀)。
 - **D3-3** 新 `scripts/verify_schema_drift.ts`:斷言 SCHEMA_SQL+runAdditions 覆蓋 drizzle 全欄位、SYNCABLE_TABLES ⊆ 註冊表。schema 雙頭漂移從「靠人記得」變 CI 斷言。
 
@@ -82,7 +102,11 @@ Scope guard:不做 CRDT/LWW(明確決策:**不做** updated_at LWW——「本�
 ### 批 E1:功能斷鏈(P1 邏輯層,全 JS 可 OTA)
 - **E1-1** today-meals 死卡(**方案 B:移除+遷移**——nutrition-summary 本來就是「今日飲食」卡含記錄入口,補新 renderer 是三份重複維護):dashboard.ts 刪 id;parseLayout 加一次性遷移(today-meals.visible→nutrition-summary.visible+order,在 DEFAULT map 丟棄前讀值;使用者兩張都關則不強開);onboarding:37 改指 nutrition-summary。驗證:新 `scripts/verify_dashboard_layout.ts` 4 斷言 + 人工清資料走 onboarding。
 - **E1-2** 通知權限 gate:reminders.ts 加 `ensurePermission()`('granted'|'denied'|'blocked';undetermined→requestPermission,拒絕過→blocked);health-settings 三開關(:177/:202/:258)開啟前 await,blocked → Alert「請到系統設定開啟通知」+ Linking.openSettings() 且開關不動。
-- **E1-3** iOS 64 上限:`buildIntervalTriggers` 加 `{horizonDays=2, maxCount=48}`(48 給 DAILY 留餘裕);startup.ts 背景鏈加 rescheduleAll 滾動補滿(開頭 cancelAll 保證冪等)。驗證:verify_reminders 加斷言 ≤48、全部>now、遞增。
+- **E1-3** iOS 64 上限 → **喝水提醒改固定每日重複時間(決策 3)**:
+  - `reminders_core.ts` 新增純函數 `dailyReminderTimes(config): {hour,minute}[]`——輸入為新的 `times[]` 明確時間;若讀到舊 `{intervalMin, window}` config 則**一次性推導**(自 window 起每 intervalMin 取時點,`slice(0, MAX)`,`MAX=12` 留大量餘裕給排/睡 DAILY);輸出去重、排序、驗 0–23/0–59。**保留** `buildIntervalTriggers`(其他潛在用途)但喝水排程不再用它。
+  - `reminders.ts`:喝水改為 `for t of dailyReminderTimes(): schedule DAILY repeating (hour,minute)`(與排便/睡前同型),取代 7 天列舉一次性觸發。DAILY repeating **跨啟動持久**,故**移除**原計畫的「startup 滾動補排」——只保留設定變更時 `rescheduleAll`(開頭 cancelAll 冪等)。
+  - `health-settings.tsx`:喝水提醒編輯器從「間隔分鐘 + 視窗」改為**時間清單**(加/減時點,附預設 preset 如 8:00/11:00/14:00/17:00/20:00);讀取時把舊 config lazy 遷移成 `times[]`(存回 healthSettings JSON)。
+  - 驗證:`verify_reminders` 加斷言——`dailyReminderTimes` 上限 ≤MAX、排序去重、合法 hh:mm、舊 config 推導正確、空/壞輸入 → 預設 preset。人工:設 5 個時間 → `getAllScheduledNotificationsAsync().length` = 5(水)+ 排/睡,遠 <64;隔日不開 app 仍如期收到。
 - **E1-4** AI timeout:ai_provider.ts 加 `fetchWithTimeout`(AbortController,60s,finally clearTimeout),三 call site(:245/:299/:358)換用,AbortError → 「連線逾時(60 秒),請檢查網路後重試」走既有 throw→Alert 路徑。
 - **E1-5** Android 返回守門:workout/active 加 BackHandler('hardwareBackPress'→onPause Alert :219→return true),unmount 移除;檢查該 modal iOS gestureEnabled,必要時關閉。
 
