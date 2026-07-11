@@ -17,7 +17,8 @@ let HK: HealthKitModule | null = null;
 try { HK = require(HEALTHKIT_MODULE) as HealthKitModule; } catch { HK = null; }
 
 const SYNC_KEY = '@kibo/health_sync_enabled';
-const SHARE = [HK_ID.dietaryEnergy, HK_ID.protein, HK_ID.carb, HK_ID.fat, HK_ID.water, HK_ID.bodyMass];
+// workout 需獨立的 HKWorkoutType 授權；漏掉會讓 saveWorkoutSample 在裝置上靜默 no-op。
+const SHARE = [HK_ID.dietaryEnergy, HK_ID.protein, HK_ID.carb, HK_ID.fat, HK_ID.water, HK_ID.bodyMass, HK_ID.workout];
 const READ = [HK_ID.stepCount, HK_ID.activeEnergy];
 
 export function isHealthAvailable(): boolean {

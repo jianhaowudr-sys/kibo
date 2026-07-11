@@ -11,6 +11,8 @@ export const HK_ID = {
   bodyMass: 'HKQuantityTypeIdentifierBodyMass',
   stepCount: 'HKQuantityTypeIdentifierStepCount',
   activeEnergy: 'HKQuantityTypeIdentifierActiveEnergyBurned',
+  // workout 為 HKWorkoutType（非 quantity）；僅用於授權清單，saveWorkoutSample 需要此 share 權限。
+  workout: 'HKWorkoutTypeIdentifier',
 } as const;
 
 function pos(n: number | undefined | null): n is number {

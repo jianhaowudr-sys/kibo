@@ -19,6 +19,9 @@ ok(nutritionSamples({}).length === 0, 'empty → []');
 ok(nutritionSamples({ calories: NaN }).length === 0, 'NaN skipped');
 ok(nutritionSamples({ calories: 600 }).length === 1, 'only calories → 1 sample');
 
+// ---- workout 授權識別碼（saveWorkoutSample 需要 HKWorkoutType share 權限）----
+ok(HK_ID.workout === 'HKWorkoutTypeIdentifier', 'workout share identifier present');
+
 // ---- waterSample ----
 ok(waterSample(500)?.identifier === HK_ID.water && waterSample(500)?.unit === 'mL', 'water sample mL');
 ok(waterSample(0) === null, 'water 0 → null');
