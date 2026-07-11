@@ -2,6 +2,7 @@ name: Build unsigned iOS .ipa for SideStore
 
 on:
   workflow_dispatch:    # manual trigger from GitHub UI
+  pull_request:
   push:
     branches: [main]
     paths-ignore:
@@ -10,7 +11,36 @@ on:
       - '*.md'
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Run verify scripts
+        run: |
+          set -e
+          for f in scripts/verify_*.ts; do
+            echo "== $f"
+            npx -y tsx "$f"
+          done
+
   build:
+    needs: check
+    if: github.event_name != 'pull_request'
     runs-on: macos-15
     timeout-minutes: 60
 
