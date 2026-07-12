@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -216,7 +216,7 @@ export default function ActiveWorkout() {
     await finalizeFinish({});
   };
 
-  const onPause = () => {
+  const onPause = useCallback(() => {
     Alert.alert('暫停訓練？', '目前內容會保留，可隨時回來繼續', [
       { text: '繼續訓練', style: 'cancel' },
       { text: '暫停離開', onPress: () => router.back() },
@@ -230,7 +230,13 @@ export default function ActiveWorkout() {
         },
       },
     ]);
-  };
+  }, [router, clearRoutineQueue, cancelWorkout]);
+
+  // Android 硬體返回鍵：導向暫停守門，不直接 dismiss modal（繞過確認會漏掉「放棄」選項）。
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onPause(); return true; });
+    return () => sub.remove();
+  }, [onPause]);
 
   const EMOJI_PRESET = ['💪', '🦵', '🔥', '🏋️', '🏃', '🧘', '🤸', '🎯'];
 

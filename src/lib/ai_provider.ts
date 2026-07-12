@@ -1,6 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { buildAnthropicSystem, openaiCacheParams } from './ai_cache';
 
+/** fetch 加逾時（AbortController）；逾時拋可辨識錯誤，避免行動網路下永久卡住。 */
+async function fetchWithTimeout(input: string, init: RequestInit, ms = 60_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new Error('連線逾時（60 秒），請檢查網路後重試');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'minimax' | 'minimax-cn';
 
 export type AIModelId =
@@ -242,7 +256,7 @@ async function callOpenAICompatible(p: {
   baseUrl: string; apiKey: string; model: string; systemPrompt: string; userPrompt: string;
   base64: string; temperature: number; maxTokens: number; detail: 'auto' | 'high';
 }): Promise<string> {
-  const res = await fetch(`${p.baseUrl}/chat/completions`, {
+  const res = await fetchWithTimeout(`${p.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -296,7 +310,7 @@ async function callAnthropic(p: {
   apiKey: string; model: string; systemPrompt: string; userPrompt: string;
   base64: string; temperature: number; maxTokens: number;
 }): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -355,7 +369,7 @@ async function callGemini(p: {
 }): Promise<string> {
   // Gemini 2.5 隱式快取預設開啟：靜態 systemInstruction 會自動被快取，無需明確 cachedContents。
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(p.model)}:generateContent?key=${encodeURIComponent(p.apiKey)}`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

@@ -6,7 +6,7 @@
 
 import * as Notifications from 'expo-notifications';
 import type { HealthSettings, ReminderConfig } from './health_settings';
-import { buildIntervalTriggers, parseHhmm } from './reminders_core';
+import { dailyReminderTimes, parseHhmm } from './reminders_core';
 
 const CATEGORY_WATER = 'water-quick';
 
@@ -26,10 +26,23 @@ export async function requestPermission(): Promise<boolean> {
   return status === 'granted';
 }
 
+/**
+ * 開啟提醒前的權限 gate。granted 才排程；blocked（iOS 已拒絕且不能再問）→ 呼叫端引導去設定。
+ */
+export async function ensurePermission(): Promise<'granted' | 'denied' | 'blocked'> {
+  const current = await Notifications.getPermissionsAsync();
+  if (current.status === 'granted') return 'granted';
+  if (current.status === 'denied' && current.canAskAgain === false) return 'blocked';
+  const req = await Notifications.requestPermissionsAsync();
+  if (req.status === 'granted') return 'granted';
+  if (req.canAskAgain === false) return 'blocked';
+  return 'denied';
+}
+
 async function scheduleWater(config: ReminderConfig) {
-  if (!config.enabled || config.type !== 'interval' || !config.intervalMin || !config.activeWindow) return;
-  const triggers = buildIntervalTriggers(config.intervalMin, config.activeWindow, Date.now());
-  for (const ms of triggers) {
+  if (!config.enabled) return;
+  // 喝水改為固定每日重複時間（DAILY repeating）：永久有效、不怕沒開 app、只占少數 slot。
+  for (const { hour, minute } of dailyReminderTimes(config)) {
     await Notifications.scheduleNotificationAsync({
       content: {
         title: '💧 該喝水了',
@@ -37,7 +50,7 @@ async function scheduleWater(config: ReminderConfig) {
         categoryIdentifier: CATEGORY_WATER,
         data: { type: 'water' },
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(ms) },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute },
     });
   }
 }

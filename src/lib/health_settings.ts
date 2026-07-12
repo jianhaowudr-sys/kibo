@@ -2,6 +2,8 @@
  * 健康設定（plan v2 §4.1）。存在 users.health_settings JSON 欄位。
  */
 
+import { dailyReminderTimes, formatHhmm } from './reminders_core';
+
 export type ReminderConfig = {
   enabled: boolean;
   type: 'interval' | 'fixed';
@@ -53,9 +55,8 @@ export const DEFAULT_HEALTH_SETTINGS: HealthSettings = {
     minStepMl: 100,
     reminder: {
       enabled: false,
-      type: 'interval',
-      intervalMin: 120,
-      activeWindow: { startHour: 8, endHour: 22 },
+      type: 'fixed',
+      fixedTimes: ['8:00', '12:00', '16:00', '20:00'],
     },
   },
   bowel: {
@@ -94,7 +95,7 @@ export function parseHealthSettings(raw: string | null): HealthSettings {
   if (!raw) return DEFAULT_HEALTH_SETTINGS;
   try {
     const obj = JSON.parse(raw);
-    return {
+    const merged: HealthSettings = {
       ...DEFAULT_HEALTH_SETTINGS,
       ...obj,
       water: { ...DEFAULT_HEALTH_SETTINGS.water, ...(obj.water ?? {}) },
@@ -103,6 +104,17 @@ export function parseHealthSettings(raw: string | null): HealthSettings {
       period: { ...DEFAULT_HEALTH_SETTINGS.period, ...(obj.period ?? {}) },
       body: { ...DEFAULT_HEALTH_SETTINGS.body, ...(obj.body ?? {}) },
     };
+    // 遷移：舊喝水提醒為 interval 模型（無 fixedTimes）→ 轉成固定每日時間
+    const wr = merged.water.reminder;
+    if (wr && (!wr.fixedTimes || wr.fixedTimes.length === 0)) {
+      const derived = dailyReminderTimes(wr).map(formatHhmm);
+      merged.water.reminder = {
+        ...wr,
+        type: 'fixed',
+        fixedTimes: derived.length > 0 ? derived : DEFAULT_HEALTH_SETTINGS.water.reminder.fixedTimes,
+      };
+    }
+    return merged;
   } catch {
     return DEFAULT_HEALTH_SETTINGS;
   }

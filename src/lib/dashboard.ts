@@ -14,7 +14,6 @@ export type DashboardCardId =
   | 'health-period'
   | 'today-workouts'
   | 'start-workout-button'
-  | 'today-meals'
   | 'pet-message'
   | 'body-summary'
   | 'nutrition-summary';
@@ -43,7 +42,6 @@ export const DEFAULT_DASHBOARD_LAYOUT: DashboardLayout = {
     { id: 'pet-message', visible: false, order: 7, size: 'full' },  // 預設關，第 1~7 天通常無訊息
     { id: 'today-workouts', visible: true, order: 8, size: 'full' },
     { id: 'start-workout-button', visible: true, order: 9, size: 'full' },
-    { id: 'today-meals', visible: false, order: 10, size: 'full' },
     { id: 'body-summary', visible: false, order: 11, size: 'compact' },
     { id: 'nutrition-summary', visible: false, order: 12, size: 'compact' },
     { id: 'pet', visible: false, order: 13, size: 'full' },
@@ -62,7 +60,6 @@ export const CARD_LABELS: Record<DashboardCardId, string> = {
   'pet-message': '💬 寵物訊息',
   'today-workouts': '💪 今日訓練',
   'start-workout-button': '▶️ 開始訓練按鈕',
-  'today-meals': '🍱 今日飲食',
   'body-summary': '🏋️ 體態快覽',
   'nutrition-summary': '🥗 飲食快覽',
 };
@@ -74,6 +71,21 @@ export function parseLayout(raw: string | null): DashboardLayout {
     if (Array.isArray(obj.cards)) {
       // 合併 default 補新增 card
       const map = new Map<string, DashboardCard>(obj.cards.map((c: any) => [c.id as string, c as DashboardCard]));
+      // 遷移：today-meals 已移除（原本無 renderer，形同死卡）。曾開啟它的使用者 → 改開
+      // nutrition-summary（本就是「今日飲食」卡，含記錄入口），承接其 order。須在下方以
+      // DEFAULT 重建、丟棄舊 id 之前讀取。
+      const legacy = map.get('today-meals');
+      if (legacy?.visible) {
+        const ns = map.get('nutrition-summary');
+        if (!ns || !ns.visible) {
+          map.set('nutrition-summary', {
+            id: 'nutrition-summary',
+            visible: true,
+            order: ns?.order ?? legacy.order,
+            size: ns?.size ?? 'compact',
+          });
+        }
+      }
       const merged: DashboardCard[] = DEFAULT_DASHBOARD_LAYOUT.cards.map((d) => map.get(d.id) ?? d);
       return { cards: merged.sort((a, b) => a.order - b.order) };
     }
