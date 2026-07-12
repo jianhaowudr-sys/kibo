@@ -1,4 +1,5 @@
 import { sqliteDb } from './client';
+import { ALL_TABLES_REVERSE } from './tables';
 import { DEFAULT_EXERCISES } from '@/data/exercises';
 import { V2_EXERCISES } from '@/data/exercises_v2';
 
@@ -534,18 +535,9 @@ export async function ensureSchema(): Promise<void> {
 }
 
 export async function resetDatabase(): Promise<void> {
-  await sqliteDb.execAsync(`
-    DROP TABLE IF EXISTS meals;
-    DROP TABLE IF EXISTS body_measurements;
-    DROP TABLE IF EXISTS routine_exercises;
-    DROP TABLE IF EXISTS routines;
-    DROP TABLE IF EXISTS achievements;
-    DROP TABLE IF EXISTS pets;
-    DROP TABLE IF EXISTS eggs;
-    DROP TABLE IF EXISTS workout_sets;
-    DROP TABLE IF EXISTS workouts;
-    DROP TABLE IF EXISTS exercises;
-    DROP TABLE IF EXISTS users;
-  `);
+  // 反序（子先父後）DROP 全 22 張——避免只刪部分表造成舊資料掛回新 user（隱私）。
+  for (const t of ALL_TABLES_REVERSE) {
+    await sqliteDb.execAsync(`DROP TABLE IF EXISTS "${t}";`);
+  }
   await ensureSchema();
 }

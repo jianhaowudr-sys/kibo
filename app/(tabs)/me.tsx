@@ -1402,7 +1402,14 @@ export default function MeScreen() {
                             if (result.imported) {
                               await bootstrap();
                               haptic.success();
-                              Alert.alert('✅ 匯入成功', `${result.tables} 張表、${result.rows} 筆紀錄已還原`);
+                              let msg = `${result.tables} 張表、${result.rows} 筆紀錄已還原`;
+                              if (result.skippedTables.length > 0) {
+                                msg += `\n\n⚠️ 略過未知資料表：${result.skippedTables.join('、')}`;
+                              }
+                              if (result.skippedColumns.length > 0) {
+                                msg += `\n⚠️ 略過已淘汰欄位：${result.skippedColumns.length} 個`;
+                              }
+                              Alert.alert('✅ 匯入成功', msg);
                             }
                           } catch (e: any) {
                             haptic.error();
