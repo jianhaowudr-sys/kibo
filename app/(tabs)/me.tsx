@@ -17,6 +17,7 @@ import {
   type AIModelId, type AIProvider, type ModelInfo,
 } from '@/lib/ai_provider';
 import { clearMealMemory, getMemoryStats } from '@/lib/memory';
+import Constants from 'expo-constants';
 import { exportAll, importAll } from '@/lib/backup';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { importStrongCSV } from '@/lib/csv_import';
@@ -1256,12 +1257,15 @@ export default function MeScreen() {
               <View className="gap-2 mb-3">
                 {MODELS.map((m) => {
                   const active = m.id === activeModelId;
+                  const blocked = !!m.visionUnsupported;
                   const tierColor = m.tier === 'economy' ? 'text-kibo-success' : m.tier === 'balanced' ? 'text-kibo-primary' : 'text-kibo-accent';
                   return (
                     <Pressable
                       key={m.id}
-                      onPressIn={() => haptic.tapLight()}
-                      onPress={() => onPickModel(m.id)}
+                      disabled={blocked}
+                      onPressIn={() => !blocked && haptic.tapLight()}
+                      onPress={() => !blocked && onPickModel(m.id)}
+                      style={blocked ? { opacity: 0.4 } : undefined}
                       className={`rounded-xl p-3 border ${active ? 'border-kibo-primary bg-kibo-primary/10' : 'border-kibo-card bg-kibo-card'}`}
                     >
                       <View className="flex-row items-center justify-between">
@@ -1494,7 +1498,7 @@ export default function MeScreen() {
               <Text className="text-kibo-mute">▶</Text>
             </Pressable>
 
-            <Text className="text-kibo-mute text-center text-xs mt-6">Kibo v1.2</Text>
+            <Text className="text-kibo-mute text-center text-xs mt-6">Kibo v{Constants.expoConfig?.version ?? ''}</Text>
           </>
         )}
       </ScrollView>

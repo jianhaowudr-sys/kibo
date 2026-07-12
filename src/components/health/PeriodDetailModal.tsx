@@ -3,12 +3,13 @@ import { View, Text, Pressable, Modal, TextInput, ScrollView } from 'react-nativ
 import { useThemePalette } from '@/lib/useThemePalette';
 import * as haptic from '@/lib/haptic';
 import type { PeriodFlow } from '@/db/schema';
+import { PERIOD_FLOW_LABELS } from '@/lib/period_labels';
 
 const FLOWS: { id: PeriodFlow; label: string; emoji: string }[] = [
-  { id: 'spot', label: '點滴', emoji: '🌸' },
-  { id: 'light', label: '少量', emoji: '🩸' },
-  { id: 'medium', label: '中量', emoji: '🌹' },
-  { id: 'heavy', label: '大量', emoji: '🌺' },
+  { id: 'spot', label: PERIOD_FLOW_LABELS.spot, emoji: '🌸' },
+  { id: 'light', label: PERIOD_FLOW_LABELS.light, emoji: '🩸' },
+  { id: 'medium', label: PERIOD_FLOW_LABELS.medium, emoji: '🌹' },
+  { id: 'heavy', label: PERIOD_FLOW_LABELS.heavy, emoji: '🌺' },
 ];
 
 const SYMPTOMS = [

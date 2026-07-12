@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { computeCyclePrediction } from '@/lib/period_predict';
+import { periodFlowLabel } from '@/lib/period_labels';
 import * as healthRepo from '@/db/health_repo';
 import { format } from 'date-fns';
 import * as haptic from '@/lib/haptic';
@@ -78,7 +79,7 @@ export default function PeriodHistory() {
             }}>
               <View style={{ width: 8, height: 28, borderRadius: 2, backgroundColor: FLOW_COLOR[p.flow] ?? palette.accent, marginRight: 12 }} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: palette.text, fontWeight: '700' }}>{format(date, 'yyyy/M/d')} · {p.flow}</Text>
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{format(date, 'yyyy/M/d')} · {periodFlowLabel(p.flow)}</Text>
                 {!!p.isCycleStart && <Text style={{ color: palette.accent, fontSize: 11 }}>新週期第一天</Text>}
                 {p.notes && <Text style={{ color: palette.mute, fontSize: 11 }}>{p.notes}</Text>}
               </View>

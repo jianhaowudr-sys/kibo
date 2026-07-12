@@ -19,7 +19,9 @@
       "buildNumber": "13",
       "appleTeamId": "XGY266T6Y8",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.kibo.fitness"]
+        "com.apple.security.application-groups": [
+          "group.app.kibo.fitness"
+        ]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -65,7 +67,8 @@
           "background": false
         }
       ],
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

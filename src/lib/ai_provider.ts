@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { buildAnthropicSystem, openaiCacheParams } from './ai_cache';
 
 /** fetch 加逾時（AbortController）；逾時拋可辨識錯誤，避免行動網路下永久卡住。 */
@@ -37,6 +38,8 @@ export type ModelInfo = {
   estCostNtd: string;
   visionQuality: '普通' | '好' | '極佳';
   notes: string;
+  /** API 不支援看圖 → picker 灰化、不可設為 active（設到會 fallback）。 */
+  visionUnsupported?: boolean;
 };
 
 export const MODELS: ModelInfo[] = [
@@ -116,6 +119,7 @@ export const MODELS: ModelInfo[] = [
     estCostNtd: '~0.09 NTD',
     visionQuality: '普通',
     notes: '❌ 目前 API 不支援看圖（只會回文字推理），請用其他模型',
+    visionUnsupported: true,
   },
   {
     id: 'minimax-cn-m2-5',
@@ -127,6 +131,7 @@ export const MODELS: ModelInfo[] = [
     estCostNtd: '~0.09 NTD',
     visionQuality: '普通',
     notes: '❌ 同上，api.minimaxi.com 也不支援看圖',
+    visionUnsupported: true,
   },
 ];
 
@@ -146,6 +151,7 @@ export const PROVIDER_SIGNUP_URL: Record<AIProvider, string> = {
   'minimax-cn': 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
 };
 
+// 舊版明文 AsyncStorage key（僅供一次性遷移讀取）。
 const KEY_PROVIDER_KEYS: Record<AIProvider, string> = {
   openai: '@kibo/openai_api_key',
   anthropic: '@kibo/anthropic_api_key',
@@ -154,23 +160,55 @@ const KEY_PROVIDER_KEYS: Record<AIProvider, string> = {
   'minimax-cn': '@kibo/minimax_cn_api_key',
 };
 
+// SecureStore（Keychain/Keystore）key：只允許 [A-Za-z0-9._-]，不可含 '@' '/'。
+const SECURE_PROVIDER_KEYS: Record<AIProvider, string> = {
+  openai: 'kibo_openai_api_key',
+  anthropic: 'kibo_anthropic_api_key',
+  gemini: 'kibo_gemini_api_key',
+  minimax: 'kibo_minimax_api_key',
+  'minimax-cn': 'kibo_minimax_cn_api_key',
+};
+
+async function secureAvailable(): Promise<boolean> {
+  try { return await SecureStore.isAvailableAsync(); } catch { return false; }
+}
+
 const KEY_ACTIVE_MODEL = '@kibo/active_ai_model';
 const DEFAULT_MODEL: AIModelId = 'openai-gpt-4o';
 
 export async function getProviderKey(provider: AIProvider): Promise<string | null> {
   try {
-    return await AsyncStorage.getItem(KEY_PROVIDER_KEYS[provider]);
-  } catch {
-    return null;
-  }
+    if (await secureAvailable()) {
+      const v = await SecureStore.getItemAsync(SECURE_PROVIDER_KEYS[provider]);
+      if (v) return v;
+      // miss → 從舊明文 AsyncStorage lazy 遷移一次
+      const legacy = await AsyncStorage.getItem(KEY_PROVIDER_KEYS[provider]);
+      if (legacy) {
+        try {
+          await SecureStore.setItemAsync(SECURE_PROVIDER_KEYS[provider], legacy);
+          await AsyncStorage.removeItem(KEY_PROVIDER_KEYS[provider]);
+        } catch {}
+        return legacy;
+      }
+      return null;
+    }
+  } catch {}
+  // SecureStore 不可用（如 web）→ 退回 AsyncStorage
+  try { return await AsyncStorage.getItem(KEY_PROVIDER_KEYS[provider]); } catch { return null; }
 }
 
 export async function setProviderKey(provider: AIProvider, key: string): Promise<void> {
-  if (!key) {
-    await AsyncStorage.removeItem(KEY_PROVIDER_KEYS[provider]);
-  } else {
-    await AsyncStorage.setItem(KEY_PROVIDER_KEYS[provider], key);
-  }
+  try {
+    if (await secureAvailable()) {
+      if (!key) await SecureStore.deleteItemAsync(SECURE_PROVIDER_KEYS[provider]);
+      else await SecureStore.setItemAsync(SECURE_PROVIDER_KEYS[provider], key);
+      // 清掉舊明文殘留
+      try { await AsyncStorage.removeItem(KEY_PROVIDER_KEYS[provider]); } catch {}
+      return;
+    }
+  } catch {}
+  if (!key) await AsyncStorage.removeItem(KEY_PROVIDER_KEYS[provider]);
+  else await AsyncStorage.setItem(KEY_PROVIDER_KEYS[provider], key);
 }
 
 export async function hasProviderKey(provider: AIProvider): Promise<boolean> {
@@ -181,7 +219,9 @@ export async function hasProviderKey(provider: AIProvider): Promise<boolean> {
 export async function getActiveModelId(): Promise<AIModelId> {
   try {
     const v = await AsyncStorage.getItem(KEY_ACTIVE_MODEL);
-    if (v && MODELS.some((m) => m.id === v)) return v as AIModelId;
+    const m = v ? MODELS.find((x) => x.id === v) : undefined;
+    // 不支援看圖的 model（如 MiniMax）→ 自動 fallback，避免判讀失敗
+    if (m && !m.visionUnsupported) return m.id;
   } catch {}
   return DEFAULT_MODEL;
 }

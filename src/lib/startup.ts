@@ -53,17 +53,26 @@ export function runBackgroundStartup(): void {
     } catch (e) {
       console.warn('[startup] 登入態載入失敗', e);
     }
-    try {
-      const { user, pets } = useAppStore.getState();
-      if (user) {
+    // per-step try/catch：任一步失敗不吞掉後續（原本共用一個 try，訊息失敗會連帶跳過週回顧/refreshHealth）
+    const { user, pets } = useAppStore.getState();
+    if (user) {
+      try {
         const { generateDailyMessages } = await import('@/lib/pet_messages');
         await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
+      } catch (e) {
+        console.warn('[startup] 寵物訊息生成失敗', e);
+      }
+      try {
         const { maybeGenerateWeeklyReview } = await import('@/lib/weekly_review');
         await maybeGenerateWeeklyReview(user.id, pets[0] ?? null);
-        await useAppStore.getState().refreshHealth();
+      } catch (e) {
+        console.warn('[startup] 週回顧生成失敗', e);
       }
-    } catch (e) {
-      console.warn('[startup] 寵物訊息生成失敗', e);
+      try {
+        await useAppStore.getState().refreshHealth();
+      } catch (e) {
+        console.warn('[startup] refreshHealth 失敗', e);
+      }
     }
     end();
   })();
