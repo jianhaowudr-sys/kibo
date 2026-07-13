@@ -53,6 +53,14 @@ export function runBackgroundStartup(): void {
     } catch (e) {
       console.warn('[startup] 登入態載入失敗', e);
     }
+    // 每次啟動重排通知：讓喝水 interval→固定每日時間的遷移實際生效（migration 只改記憶體，
+    // 需 rescheduleAll 才會把新 DAILY 觸發排進系統；否則舊 DATE 觸發過期後就再也不響）。
+    try {
+      const { rescheduleAll } = await import('@/lib/reminders');
+      await rescheduleAll(useAppStore.getState().healthSettings);
+    } catch (e) {
+      console.warn('[startup] 通知重排失敗', e);
+    }
     // per-step try/catch：任一步失敗不吞掉後續（原本共用一個 try，訊息失敗會連帶跳過週回顧/refreshHealth）
     const { user, pets } = useAppStore.getState();
     if (user) {

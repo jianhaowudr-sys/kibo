@@ -2,7 +2,11 @@
 // 定位：本地為真相、雲端為備份+還原。用 client 端 sync_uuid 當跨裝置主鍵，取代不穩定的 local_id。
 
 /** 各表的 natural key（reconcile/pull 防重用）。只有 period_days.day_key、achievements.code 是真唯一鍵；
- *  其餘靠 ms 時間戳，故 reconcile 採「唯一候選才 claim」策略。 */
+ *  其餘靠 ms 時間戳，故 reconcile 採「唯一候選才 claim」策略。
+ *  ⚠️ 接線注意：子表（routine_exercises/workout_sets）的 key 依賴父的 client_uuid。cloud 列已帶
+ *  routine_client_uuid/workout_client_uuid；但本地 SQLite 列只有原生 FK（routine_id/workout_id），
+ *  呼叫端**必須先把本地列 enrich 成帶父 uuid**（查父 sync_uuid）才能傳進來，否則兩邊 key 不會相符。
+ *  verify_sync_core 目前只覆蓋父表，子表路徑待接線時補測。 */
 export function naturalKeyOf(table: string, row: any): string | null {
   const j = (...vals: any[]) => vals.map((v) => (v === null || v === undefined ? '' : String(v))).join('|');
   switch (table) {

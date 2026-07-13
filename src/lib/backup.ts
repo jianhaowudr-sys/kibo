@@ -108,10 +108,18 @@ export async function importAll(): Promise<ImportResult> {
   // (3) 決定要 replace 的表 + 各表欄位規劃（交易外先算好）
   const { tables, skippedTables } = tablesToImport(Object.keys(data.tables), ALL_TABLES);
   const plans = new Map<string, ReturnType<typeof planTableInsert>>();
+  const restorable: string[] = [];  // 實際會清空+還原的表
   for (const t of tables) {
     const rows = data.tables[t] ?? [];
     const fileCols = rows.length > 0 ? Object.keys(rows[0]) : [];
-    plans.set(t, planTableInsert(fileCols, await liveColumns(t)));
+    const plan = planTableInsert(fileCols, await liveColumns(t));
+    plans.set(t, plan);
+    // 有資料但沒有任何可對映欄位（schema 完全不符）→ 不能還原也不該清空（避免靜默 wipe）
+    if (rows.length > 0 && plan.columns.length === 0) {
+      skippedTables.push(t);
+    } else {
+      restorable.push(t);  // 含「檔案為空 → 還原成空」的正常語意
+    }
   }
 
   // (4) 整包 DELETE + INSERT 包在交易，任何失敗 throw → ROLLBACK，本地資料完好如初
@@ -120,12 +128,12 @@ export async function importAll(): Promise<ImportResult> {
   const skippedColumns: string[] = [];
 
   await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
-    // 反序 DELETE（子先父後）——只清要 replace 的表
-    const toDelete = ALL_TABLES_REVERSE.filter((t) => tables.includes(t));
+    // 反序 DELETE（子先父後）——只清可還原的表
+    const toDelete = ALL_TABLES_REVERSE.filter((t) => restorable.includes(t));
     for (const t of toDelete) await txn.runAsync(`DELETE FROM "${t}"`);
 
     // 正序 INSERT
-    for (const t of tables) {
+    for (const t of restorable) {
       const rows = data.tables[t] ?? [];
       if (rows.length === 0) continue;
       const plan = plans.get(t)!;
