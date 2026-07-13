@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kibo 健身",
     "slug": "kibo",
-    "version": "1.0.7",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kibo",
