@@ -465,6 +465,25 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('custom_foods', 'barcode'))) {
     await sqliteDb.runAsync('ALTER TABLE custom_foods ADD COLUMN barcode TEXT');
   }
+
+  // v1.1.0 雲同步（批 D2）：14 張同步表加 client 端 sync_uuid（加法遷移）+ 純 SQL backfill + unique index。
+  // sync_uuid 是跨裝置同步主鍵，取代不穩定的 SQLite autoincrement local_id（修 P0-3 重裝/多裝置資料覆蓋）。
+  const SYNC_UUID_TABLES = [
+    'workouts', 'workout_sets', 'meals', 'body_measurements', 'routines', 'routine_exercises',
+    'eggs', 'pets', 'achievements', 'custom_foods', 'water_logs', 'bowel_logs', 'sleep_logs', 'period_days',
+  ];
+  for (const t of SYNC_UUID_TABLES) {
+    if (!(await hasColumn(t, 'sync_uuid'))) {
+      await sqliteDb.runAsync(`ALTER TABLE ${t} ADD COLUMN sync_uuid TEXT`);
+    }
+    // randomblob(16) 每列重新求值 → 每列不同的 128-bit 隨機；一條 SQL 完成 backfill，免 JS 迴圈。
+    await sqliteDb.runAsync(`UPDATE ${t} SET sync_uuid = lower(hex(randomblob(16))) WHERE sync_uuid IS NULL`);
+    await sqliteDb.runAsync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_sync_uuid ON ${t}(sync_uuid)`);
+  }
+  // tombstone 佇列帶 sync_uuid（刪除同步改用 uuid；舊佇列項 uuid 為 null 時 fallback local_id）
+  if (!(await hasColumn('pending_deletions', 'sync_uuid'))) {
+    await sqliteDb.runAsync('ALTER TABLE pending_deletions ADD COLUMN sync_uuid TEXT');
+  }
 }
 
 async function seedV2IfNeeded(): Promise<void> {
