@@ -4,13 +4,71 @@
 -- 在 Supabase SQL Editor 執行。
 
 -- ============================================================
--- A) profiles 補齊 pushProfile 會送、但線上缺的欄位（修 P1-6 同步第一步就炸）
+-- A) 逐欄收斂：2026-07-21 的線上探測顯示 **migration 003 從未被套用**
+--    （daily_scores 整張表不存在；eggs/pets/routines/sleep_logs 都缺 003 的欄位），
+--    且五張健康表是手動建的（CREATE TABLE IF NOT EXISTS 對它們是 no-op）。
+--    故這裡逐欄 add column if not exists，才是真正讓線上收斂到預期 schema 的部分。
+--    每一欄都對應 push payload 實際會送的欄位——缺一個就整批 42703 失敗。
 -- ============================================================
+
+-- profiles：005 的 4 欄 + 003 沒套用到的 3 欄
 alter table public.profiles
   add column if not exists health_settings text,
   add column if not exists dashboard_layout text,
   add column if not exists streak_freeze_tokens int not null default 0,
-  add column if not exists onboarding_completed_at timestamptz;
+  add column if not exists onboarding_completed_at timestamptz,
+  add column if not exists consecutive_days int not null default 0,
+  add column if not exists last_active_day text,
+  add column if not exists next_egg_rarity_floor text;
+
+-- eggs / pets：v1.0.2 解放健力% 系統（003 未套用）
+alter table public.eggs
+  add column if not exists liberation_pct real not null default 0,
+  add column if not exists target_pct real not null default 100,
+  add column if not exists skin_id text,
+  add column if not exists rarity text,
+  add column if not exists is_legacy int not null default 0;
+
+alter table public.pets
+  add column if not exists skin_id text,
+  add column if not exists rarity text,
+  add column if not exists is_legacy int not null default 1;
+
+-- routines 排序（003 未套用）
+alter table public.routines
+  add column if not exists sort_order int not null default 0;
+
+-- sleep_logs 片段睡眠模型（003 未套用）
+alter table public.sleep_logs
+  add column if not exists kind text not null default 'main',
+  add column if not exists assigned_day_key text;
+
+-- custom_foods 條碼
+alter table public.custom_foods
+  add column if not exists barcode text;
+
+-- period_days 缺 updated_at（push 一直有送 → 經期同步從未成功過）
+alter table public.period_days
+  add column if not exists updated_at timestamptz not null default now();
+
+-- daily_scores：003 要建但線上不存在
+create table if not exists public.daily_scores (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  local_id int,
+  day_key text not null,
+  source text not null,
+  source_local_id int,
+  points real not null,
+  created_at timestamptz not null,
+  updated_at timestamptz not null default now(),
+  unique(user_id, local_id)
+);
+alter table public.daily_scores enable row level security;
+drop policy if exists "daily_scores_self" on public.daily_scores;
+create policy "daily_scores_self" on public.daily_scores
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create index if not exists idx_daily_scores_user_day on public.daily_scores(user_id, day_key);
 
 -- ============================================================
 -- B) 健康四表 + 自訂食物：CREATE IF NOT EXISTS（含 RLS + unique(user_id,local_id)）

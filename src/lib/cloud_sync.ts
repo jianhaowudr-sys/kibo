@@ -129,6 +129,44 @@ function conflictTarget(cap: boolean): string {
   return cap ? 'user_id,client_uuid' : 'user_id,local_id';
 }
 
+/** 從 PostgREST 錯誤解析出「雲端缺哪一欄」。 */
+function missingColumnFrom(error: any): string | null {
+  const code = error?.code ?? '';
+  const msg: string = error?.message ?? '';
+  if (code !== '42703' && code !== 'PGRST204' && !/does not exist|schema cache/i.test(msg)) return null;
+  // 42703: column "xxx" of relation "yyy" does not exist
+  // PGRST204: Could not find the 'xxx' column of 'yyy' in the schema cache
+  const m = msg.match(/column ["'`]?([\w_]+)["'`]? of/i) ?? msg.match(/["'`]([\w_]+)["'`] column/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * 自適應 upsert：雲端缺某欄時（42703 / PGRST204）從錯誤解析欄名、從 payload 移除後重試。
+ *
+ * 為什麼需要：2026-07-21 探測發現線上 **migration 003 從未套用**，eggs/pets/routines/sleep_logs/
+ * custom_foods/period_days 都缺欄。缺一欄就整批失敗、該表資料永遠上不了雲，而使用者只看到
+ * 「同步成功」。有了這層，先天不一致也只會少同步那一欄，其餘照常，並提示去跑 005。
+ */
+async function upsertAdaptive(table: string, payload: any[], onConflict: string, label: string): Promise<void> {
+  let rows = payload;
+  const dropped: string[] = [];
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const { error } = await supabase.from(table).upsert(rows, { onConflict });
+    if (!error) {
+      if (dropped.length > 0) {
+        _warnings.push(`${label}: 雲端缺欄 ${dropped.join('/')}，已略過後同步成功（請執行 005 migration 對齊）`);
+      }
+      return;
+    }
+    const col = missingColumnFrom(error);
+    if (!col || rows.length === 0) { warn(label, error); return; }
+    dropped.push(col);
+    rows = rows.map((r) => { const { [col]: _drop, ...rest } = r; return rest; });
+    if (Object.keys(rows[0] ?? {}).length === 0) { warn(label, error); return; }
+  }
+  _warnings.push(`${label}: 欄位不符、重試多次仍失敗（請執行 005 migration）`);
+}
+
 // 已知會雲端同步的表 — 只 flush 這些，避免有人 enqueue 了 typo 字串就誤刪
 const SYNCABLE_TABLES = new Set([
   'meals', 'workouts', 'workout_sets', 'body_measurements',
@@ -214,8 +252,10 @@ async function pushProfile(userId: string) {
   if (rows.length === 0) return;
   const u = rows[0];
 
-  // 001 + 003 保證存在的核心欄位
-  const core = {
+  // 完整 payload。線上實際有哪些欄位不確定（2026-07-21 探測顯示 003 從未套用），
+  // 交給 upsertAdaptive 逐欄剝除缺的欄位——比手寫「核心子集」可靠：
+  // 原本的 fallback 子集裡含 consecutive_days 等 003 欄位，而它們同樣不存在，退回去也一樣失敗。
+  const payload = {
     user_id: userId,
     name: u.name,
     height_cm: u.heightCm,
@@ -232,27 +272,15 @@ async function pushProfile(userId: string) {
     consecutive_days: (u as any).consecutiveDays ?? 0,
     last_active_day: (u as any).lastActiveDay ?? null,
     next_egg_rarity_floor: (u as any).nextEggRarityFloor ?? null,
-    updated_at: new Date().toISOString(),
-  };
-  // 005 之後才保證存在的欄位
-  const extended = {
-    ...core,
     health_settings: u.healthSettings ?? null,
     dashboard_layout: u.dashboardLayout ?? null,
     streak_freeze_tokens: u.streakFreezeTokens ?? 0,
     onboarding_completed_at: toISO(u.onboardingCompletedAt),
+    updated_at: new Date().toISOString(),
   };
 
   try {
-    const { error } = await supabase.from('profiles').upsert(extended, { onConflict: 'user_id' });
-    if (!error) return;
-    const code = (error as any)?.code ?? '';
-    const missingColumn = code === '42703' || code === 'PGRST204' || /column .* does not exist/i.test(error.message ?? '');
-    if (!missingColumn) { warn('pushProfile', error); return; }
-    // 欄位不存在 → 退回核心子集重試
-    const retry = await supabase.from('profiles').upsert(core, { onConflict: 'user_id' });
-    if (retry.error) warn('pushProfile(core retry)', retry.error);
-    else _warnings.push('profiles 缺 005 欄位，已用核心子集同步（請跑 005 migration）');
+    await upsertAdaptive('profiles', [payload], 'user_id', 'pushProfile');
   } catch (e) {
     warn('pushProfile', e);
   }
@@ -272,8 +300,7 @@ async function pushCustomFoods(userId: string, cap: boolean) {
       use_count: f.useCount, last_used_at: toISO(f.lastUsedAt),
       created_at: toISO(f.createdAt), updated_at: new Date().toISOString(),
     }, uuids.get(f.id), cap));
-    const { error } = await supabase.from('custom_foods').upsert(payload, { onConflict: conflictTarget(cap) });
-    if (error) warn('pushCustomFoods', error);
+    await upsertAdaptive('custom_foods', payload, conflictTarget(cap), 'pushCustomFoods');
   } catch (e) { warn('pushCustomFoods', e); }
 }
 
@@ -290,8 +317,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         batch_key: w.batchKey, created_at: toISO(w.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(w.id), cap));
-      const { error } = await supabase.from('water_logs').upsert(payload, { onConflict: conflictTarget(cap) });
-      if (error) warn('pushWaterLogs', error);
+      await upsertAdaptive('water_logs', payload, conflictTarget(cap), 'pushWaterLogs');
     }
   } catch (e) { warn('pushWaterLogs', e); }
   try {
@@ -305,8 +331,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         notes: b.notes, created_at: toISO(b.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(b.id), cap));
-      const { error } = await supabase.from('bowel_logs').upsert(payload, { onConflict: conflictTarget(cap) });
-      if (error) warn('pushBowelLogs', error);
+      await upsertAdaptive('bowel_logs', payload, conflictTarget(cap), 'pushBowelLogs');
     }
   } catch (e) { warn('pushBowelLogs', e); }
   try {
@@ -321,8 +346,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         assigned_day_key: (s as any).assignedDayKey ?? s.dayKey,
         created_at: toISO(s.createdAt), updated_at: new Date().toISOString(),
       }, uuids.get(s.id), cap));
-      const { error } = await supabase.from('sleep_logs').upsert(payload, { onConflict: conflictTarget(cap) });
-      if (error) warn('pushSleepLogs', error);
+      await upsertAdaptive('sleep_logs', payload, conflictTarget(cap), 'pushSleepLogs');
     }
   } catch (e) { warn('pushSleepLogs', e); }
   try {
@@ -337,8 +361,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         created_at: toISO(p.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(p.id), cap));
-      const { error } = await supabase.from('period_days').upsert(payload, { onConflict: conflictTarget(cap) });
-      if (error) warn('pushPeriodDays', error);
+      await upsertAdaptive('period_days', payload, conflictTarget(cap), 'pushPeriodDays');
     }
   } catch (e) { warn('pushPeriodDays', e); }
 }
@@ -358,8 +381,7 @@ async function pushWorkouts(userId: string, cap: boolean) {
     duration_sec: w.durationSec,
     updated_at: new Date().toISOString(),
   }, uuids.get(w.id), cap));
-  const { error } = await supabase.from('workouts').upsert(payload, { onConflict: conflictTarget(cap) });
-  if (error) warn('pushWorkouts', error);
+  await upsertAdaptive('workouts', payload, conflictTarget(cap), 'pushWorkouts');
 }
 
 async function pushWorkoutSets(userId: string, cap: boolean) {
@@ -422,8 +444,7 @@ async function pushMeals(userId: string, cap: boolean) {
     created_at: toISO(m.createdAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(m.id), cap));
-  const { error } = await supabase.from('meals').upsert(payload, { onConflict: conflictTarget(cap) });
-  if (error) warn('pushMeals', error);
+  await upsertAdaptive('meals', payload, conflictTarget(cap), 'pushMeals');
 }
 
 async function pushBody(userId: string, cap: boolean) {
@@ -450,8 +471,7 @@ async function pushBody(userId: string, cap: boolean) {
     created_at: toISO(b.createdAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(b.id), cap));
-  const { error } = await supabase.from('body_measurements').upsert(payload, { onConflict: conflictTarget(cap) });
-  if (error) warn('pushBody', error);
+  await upsertAdaptive('body_measurements', payload, conflictTarget(cap), 'pushBody');
 }
 
 async function pushRoutines(userId: string, cap: boolean) {
@@ -470,8 +490,7 @@ async function pushRoutines(userId: string, cap: boolean) {
       created_at: toISO(r.createdAt),
       updated_at: new Date().toISOString(),
     }, routineUuids.get(r.id), cap));
-    const { error } = await supabase.from('routines').upsert(payload, { onConflict: conflictTarget(cap) });
-    if (error) warn('pushRoutines', error);
+    await upsertAdaptive('routines', payload, conflictTarget(cap), 'pushRoutines');
   }
   const re = await db.select().from(schema.routineExercises);
   if (re.length > 0) {
@@ -494,8 +513,7 @@ async function pushRoutines(userId: string, cap: boolean) {
       }
       return withUuid(base, reUuids.get(x.id), cap);
     }));
-    const { error } = await supabase.from('routine_exercises').upsert(payload, { onConflict: conflictTarget(cap) });
-    if (error) warn('pushRoutineExercises', error);
+    await upsertAdaptive('routine_exercises', payload, conflictTarget(cap), 'pushRoutineExercises');
   }
 }
 
@@ -524,8 +542,7 @@ async function pushEggsPets(userId: string, cap: boolean) {
       created_at: toISO(e.createdAt),
       updated_at: new Date().toISOString(),
     }, eggUuids.get(e.id), cap));
-    const { error } = await supabase.from('eggs').upsert(payload, { onConflict: conflictTarget(cap) });
-    if (error) warn('pushEggs', error);
+    await upsertAdaptive('eggs', payload, conflictTarget(cap), 'pushEggs');
   }
   const pets = await db.select().from(schema.pets);
   if (pets.length > 0) {
@@ -548,8 +565,7 @@ async function pushEggsPets(userId: string, cap: boolean) {
       created_at: toISO(p.createdAt),
       updated_at: new Date().toISOString(),
     }, petUuids.get(p.id), cap));
-    const { error } = await supabase.from('pets').upsert(payload, { onConflict: conflictTarget(cap) });
-    if (error) warn('pushPets', error);
+    await upsertAdaptive('pets', payload, conflictTarget(cap), 'pushPets');
   }
 }
 
@@ -566,8 +582,7 @@ async function pushAchievements(userId: string, cap: boolean) {
     unlocked_at: toISO(a.unlockedAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(a.id), cap));
-  const { error } = await supabase.from('achievements').upsert(payload, { onConflict: conflictTarget(cap) });
-  if (error) warn('pushAchievements', error);
+  await upsertAdaptive('achievements', payload, conflictTarget(cap), 'pushAchievements');
 }
 
 // ============================================================
