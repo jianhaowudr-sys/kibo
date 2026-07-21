@@ -38,6 +38,7 @@ export default function ActiveWorkout() {
   const removePlannedSet = useAppStore((s) => s.removePlannedSet);
   const commitPlannedSet = useAppStore((s) => s.commitPlannedSet);
   const uncommitSet = useAppStore((s) => s.uncommitSet);
+  const removeActiveSet = useAppStore((s) => s.removeActiveSet);
 
   const [elapsed, setElapsed] = useState(0);
   const [restTriggerKey, setRestTriggerKey] = useState(0);
@@ -432,6 +433,7 @@ export default function ActiveWorkout() {
               onCommitPlanned={onCommit}
               onRemovePlanned={(key) => removePlannedSet(selectedExercise.id, key)}
               onUncommit={(setId) => uncommitSet(setId)}
+              onDeleteDone={(setId) => removeActiveSet(setId)}
               onAddPlanned={() => addPlannedSet(selectedExercise.id)}
               onOpenOptions={onOpenOptions}
             />

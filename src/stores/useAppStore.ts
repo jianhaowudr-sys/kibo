@@ -668,8 +668,30 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     get().removePlannedSet(exerciseId, key);
   },
 
+  /**
+   * 取消勾選：把已完成的組退回「計畫組」並保留輸入值。
+   * 原本是直接 removeActiveSet（刪 DB 紀錄、整列消失）——但點打勾方塊的直覺是「取消勾選」，
+   * 誤觸就永久掉資料。真正要刪除請走列左滑（onDeleteDone → removeActiveSet）。
+   */
   uncommitSet: async (setId) => {
+    const s = get().activeSets.find((x) => x.id === setId);
     await get().removeActiveSet(setId);
+    if (!s) return;
+    const exId = s.exercise.id;
+    const current = get().plannedSetsByExercise[exId] ?? [];
+    const restored: PlannedSet = {
+      key: `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      weight: s.weight ?? null,
+      reps: s.reps ?? null,
+      durationSec: s.durationSec ?? null,
+      distanceM: s.distanceM ?? null,
+      swimStroke: (s as any).swimStroke ?? null,
+      inclinePct: (s as any).inclinePct ?? null,
+      speedKmh: (s as any).speedKmh ?? null,
+    };
+    set({
+      plannedSetsByExercise: { ...get().plannedSetsByExercise, [exId]: [...current, restored] },
+    });
   },
 
   refreshExercises: async () => {

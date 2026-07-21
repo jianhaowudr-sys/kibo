@@ -4,6 +4,7 @@ import type { Exercise, WorkoutSet } from '@/db/schema';
 import type { PlannedSet } from '@/stores/useAppStore';
 import * as haptic from '@/lib/haptic';
 import { useThemePalette } from '@/lib/useThemePalette';
+import { SwipeableRow } from '@/components/common/SwipeableRow';
 
 type Row =
   | { kind: 'done'; set: WorkoutSet; idx: number }
@@ -17,6 +18,7 @@ export function ExerciseSetTable({
   onCommitPlanned,
   onRemovePlanned,
   onUncommit,
+  onDeleteDone,
   onAddPlanned,
   onOpenOptions,
 }: {
@@ -26,7 +28,10 @@ export function ExerciseSetTable({
   onUpdatePlanned: (key: string, patch: Partial<PlannedSet>) => void;
   onCommitPlanned: (key: string) => void;
   onRemovePlanned: (key: string) => void;
+  /** 點打勾方塊：取消勾選，退回計畫組（保留數值），不刪資料 */
   onUncommit: (setId: number) => void;
+  /** 左滑刪除：已完成的組 → 真的刪掉紀錄 */
+  onDeleteDone: (setId: number) => void;
   onAddPlanned: () => void;
   onOpenOptions: () => void;
 }) {
@@ -120,7 +125,12 @@ export function ExerciseSetTable({
           const isPR = isDone ? (row.set as any).isPR : null;
 
           return (
-            <View key={key} className="flex-row items-center gap-2">
+            <SwipeableRow
+              key={key}
+              deleteLabel="🗑 刪除這組"
+              onDelete={() => (isDone ? onDeleteDone(row.set.id) : onRemovePlanned(row.set.key))}
+            >
+            <View className="flex-row items-center gap-2">
               <View style={{ width: 24, alignItems: 'center' }}>
                 <Text className={`text-center font-bold ${isDone ? 'text-kibo-primary' : 'text-kibo-mute'}`}>
                   {row.idx + 1}
@@ -189,17 +199,12 @@ export function ExerciseSetTable({
                     onCommitPlanned(row.set.key);
                   }
                 }}
-                onLongPress={() => {
-                  if (!isDone) {
-                    haptic.warning();
-                    onRemovePlanned(row.set.key);
-                  }
-                }}
                 className={`w-10 h-10 rounded-full items-center justify-center ${isDone ? 'bg-kibo-primary' : 'bg-kibo-card border border-kibo-card'}`}
               >
                 <Text className={isDone ? 'text-kibo-bg text-lg' : 'text-kibo-mute text-lg'}>✓</Text>
               </Pressable>
             </View>
+            </SwipeableRow>
           );
         })}
 
