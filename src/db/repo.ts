@@ -291,6 +291,19 @@ export async function getWorkout(id: number): Promise<Workout | null> {
   return r ? rowToWorkout(r) : null;
 }
 
+/**
+ * 找最近一筆「未完成」訓練（ended_at IS NULL）供 app 重啟後恢復。
+ * sinceMs 是新鮮度下限——太久以前的未完成訓練不該自動恢復（使用者早就放棄了）。
+ * 註：listWorkouts 只取 ended_at IS NOT NULL，所以未完成的訓練不會污染歷史列表。
+ */
+export async function getUnfinishedWorkout(userId: number, sinceMs: number): Promise<Workout | null> {
+  const r = await sqliteDb.getFirstAsync<Row>(
+    'SELECT * FROM workouts WHERE user_id = ? AND ended_at IS NULL AND started_at >= ? ORDER BY started_at DESC LIMIT 1',
+    [userId, sinceMs],
+  );
+  return r ? rowToWorkout(r) : null;
+}
+
 export async function listWorkouts(userId: number, limit = 50): Promise<Workout[]> {
   const rs = await sqliteDb.getAllAsync<Row>(
     'SELECT * FROM workouts WHERE user_id = ? AND ended_at IS NOT NULL ORDER BY started_at DESC LIMIT ?',

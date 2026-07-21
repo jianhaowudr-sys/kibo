@@ -66,6 +66,13 @@ export function runBackgroundStartup(): void {
     } catch (e) {
       console.warn('[startup] 通知重排失敗', e);
     }
+    // 恢復未完成的訓練 session（app 被系統回收後可接續，首頁按鈕會顯示「繼續訓練」）
+    try {
+      await useAppStore.getState().restoreWorkoutSession();
+    } catch (e) {
+      console.warn('[startup] 訓練 session 恢復失敗', e);
+    }
+
     // per-step try/catch：任一步失敗不吞掉後續（原本共用一個 try，訊息失敗會連帶跳過週回顧/refreshHealth）
     const { user, pets } = useAppStore.getState();
     if (user) {
