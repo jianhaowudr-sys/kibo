@@ -20,7 +20,9 @@ export function naturalKeyOf(table: string, row: any): string | null {
     case 'pets': return j(row.created_at);
     case 'achievements': return j(row.code);
     case 'custom_foods': return j(row.name, row.created_at);
-    case 'water_logs': return j(row.logged_at, row.amount_ml);
+    // created_at 一併納入：loggedAt 可由呼叫端指定（補記過去日期），
+    // 補兩杯同容量到同一個時間戳會撞 key；created_at 是寫入當下的 ms，可拆開。
+    case 'water_logs': return j(row.logged_at, row.amount_ml, row.created_at);
     case 'bowel_logs': return j(row.logged_at);
     case 'sleep_logs': return j(row.bedtime_at, row.wake_at);
     case 'period_days': return j(row.day_key);

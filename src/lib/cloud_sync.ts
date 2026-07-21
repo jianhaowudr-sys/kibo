@@ -268,6 +268,7 @@ async function pushCustomFoods(userId: string, cap: boolean) {
       name: f.name, emoji: f.emoji,
       calories_kcal: f.caloriesKcal, protein_g: f.proteinG, carb_g: f.carbG, fat_g: f.fatG,
       portion: f.portion, photo_uri: f.photoUri, source: f.source,
+      barcode: f.barcode,  // 005 已建欄但 push 從未送 → 還原後掃過的條碼消失、再掃不會命中
       use_count: f.useCount, last_used_at: toISO(f.lastUsedAt),
       created_at: toISO(f.createdAt), updated_at: new Date().toISOString(),
     }, uuids.get(f.id), cap));
@@ -513,6 +514,13 @@ async function pushEggsPets(userId: string, cap: boolean) {
       hatched_at: toISO(e.hatchedAt),
       pet_local_id: e.petId,
       ...(cap && e.petId && petUuids.get(e.petId) ? { pet_client_uuid: petUuids.get(e.petId) } : {}),
+      // v1.0.2 解放健力% 系統欄位：003 早就在雲端建好，但 push 一直沒送 →
+      // 雲端值永遠停在 DB default，還原後解放進度歸 0、皮膚/稀有度消失、is_legacy 判定翻轉。
+      liberation_pct: e.liberationPct ?? 0,
+      target_pct: e.targetPct ?? 100,
+      skin_id: e.skinId,
+      rarity: e.rarity,
+      is_legacy: e.isLegacy ?? 0,
       created_at: toISO(e.createdAt),
       updated_at: new Date().toISOString(),
     }, eggUuids.get(e.id), cap));
@@ -533,6 +541,10 @@ async function pushEggsPets(userId: string, cap: boolean) {
       exp: p.exp,
       stage: p.stage,
       emoji: p.emoji,
+      // 同上：003 已建欄但 push 從未送 → 還原後寵物全被當 legacy、皮膚/稀有度消失
+      skin_id: p.skinId,
+      rarity: p.rarity,
+      is_legacy: p.isLegacy ?? 1,
       created_at: toISO(p.createdAt),
       updated_at: new Date().toISOString(),
     }, petUuids.get(p.id), cap));
@@ -606,7 +618,7 @@ function normalizeKeyFields(table: string, row: any): any {
     case 'eggs': return { ...row, created_at: toMs(row.created_at) };
     case 'pets': return { ...row, created_at: toMs(row.created_at) };
     case 'custom_foods': return { ...row, created_at: toMs(row.created_at) };
-    case 'water_logs': return { ...row, logged_at: toMs(row.logged_at) };
+    case 'water_logs': return { ...row, logged_at: toMs(row.logged_at), created_at: toMs(row.created_at) };
     case 'bowel_logs': return { ...row, logged_at: toMs(row.logged_at) };
     case 'sleep_logs': return { ...row, bedtime_at: toMs(row.bedtime_at), wake_at: toMs(row.wake_at) };
     // period_days(day_key)、achievements(code)、routine_exercises(父uuid+order_idx) 的 key 無時間戳
@@ -889,8 +901,7 @@ async function pullSimple(opts: {
   try {
     const cloud = await pullTable<any>(userId, table);
     const meId = (await db.select({ id: schema.users.id }).from(schema.users).limit(1))[0]?.id;
-    if (!meId) return map;
-    if (cloud.length > 0) {
+    if (meId && cloud.length > 0) {
       const plan = planPull(
         table,
         withUuidOnly(table, cloud).map((c) => normalizeKeyFields(table, c)),
@@ -898,19 +909,28 @@ async function pullSimple(opts: {
         await localNormalized(table, localKeyCols),
       );
       await adoptUuids(table, plan.toAdopt);
+      let failed = 0;
       for (const c of plan.toInsert) {
-        const ins = await db.insert(drizzleTable).values(insertVals(c, meId) as any).returning({ id: drizzleTable.id });
-        const newId = ins[0]?.id;
-        if (newId) {
-          await sqliteDb.runAsync(`UPDATE "${table}" SET sync_uuid = ? WHERE id = ?`, [c.client_uuid as string, newId]);
-        }
+        // 單列 try：一筆壞列（NOT NULL / Invalid Date）不得中止整表還原
+        try {
+          const ins = await db.insert(drizzleTable).values(insertVals(c, meId) as any).returning({ id: drizzleTable.id });
+          const newId = ins[0]?.id;
+          if (newId) {
+            await sqliteDb.runAsync(`UPDATE "${table}" SET sync_uuid = ? WHERE id = ?`, [c.client_uuid as string, newId]);
+          }
+        } catch { failed++; }
       }
+      if (failed > 0) _warnings.push(`${table}: ${failed} 筆還原失敗(已略過)`);
     }
+  } catch (e) { warn(`pull(${table})`, e); }
+  // 對照表**在 try 之外**建立：即使上面有壞列，父表也必須回傳正確的 uuid→id 對照，
+  // 否則 pullEggsPets 會拿到空 Map → 每隻 pet 的 eggId 變 null → 蛋寵關係全斷。
+  try {
     for (const r of await sqliteDb.getAllAsync<{ id: number; sync_uuid: string }>(
       `SELECT id, sync_uuid FROM "${table}" WHERE sync_uuid IS NOT NULL`)) {
       map.set(r.sync_uuid, r.id);
     }
-  } catch (e) { warn(`pull(${table})`, e); }
+  } catch (e) { warn(`pull(${table}) map`, e); }
   return map;
 }
 
@@ -976,18 +996,15 @@ async function pullEggsPets(userId: string) {
     }),
   });
 
-  // 回填 eggs.pet_id（雲端 egg 帶 pet_client_uuid）
+  // 回填 eggs.pet_id：不靠雲端的 pet_client_uuid（legacy 列恆為 NULL，只有 cap=true 裝置推過的蛋才有），
+  // 改用已經正確回填的 pets.egg_id 反推 —— 本地自足、不需再打網路，也不受 eggs↔pets 互指順序影響。
   try {
-    const cloud = await pullTable<any>(userId, 'eggs');
-    for (const e of cloud) {
-      if (!e.client_uuid || !e.pet_client_uuid) continue;
-      const localEggId = eggMap.get(e.client_uuid);
-      const localPetId = petMap.get(e.pet_client_uuid);
-      if (localEggId && localPetId) {
-        await sqliteDb.runAsync('UPDATE eggs SET pet_id = ? WHERE id = ? AND pet_id IS NULL', [localPetId, localEggId]);
-      }
-    }
+    await sqliteDb.runAsync(
+      `UPDATE eggs SET pet_id = (SELECT p.id FROM pets p WHERE p.egg_id = eggs.id LIMIT 1)
+        WHERE pet_id IS NULL AND EXISTS (SELECT 1 FROM pets p WHERE p.egg_id = eggs.id)`,
+    );
   } catch (e) { warn('pull(eggs.pet_id backfill)', e); }
+  void petMap;
 }
 
 /** 其餘平表：achievements / custom_foods / 四張健康表。 */
@@ -1010,7 +1027,7 @@ async function pullFlatTables(userId: string) {
     }),
   });
   await pullSimple({
-    userId, table: 'water_logs', localKeyCols: 'logged_at, amount_ml', drizzleTable: schema.waterLogs,
+    userId, table: 'water_logs', localKeyCols: 'logged_at, amount_ml, created_at', drizzleTable: schema.waterLogs,
     insertVals: (w, meId) => ({
       userId: meId, amountMl: w.amount_ml, loggedAt: new Date(w.logged_at),
       batchKey: w.batch_key, createdAt: new Date(w.created_at),
@@ -1060,16 +1077,12 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
   try {
     const { data, error } = await supabase.from(table).select('*').eq('user_id', userId).is('client_uuid', null);
     if (error) { warn(`reconcile(${table})`, error); return; }
-    const cloudRows = (data ?? []).map((r) => normalizeKeyFields(table, r));
-    if (cloudRows.length === 0) return;
-    const localRows = await localNormalized(table, localCols);
-    const { claims, orphans } = planReconcile(table, cloudRows, localRows);
+    if ((data ?? []).length === 0) return;
 
-    // 子表：同時回填父 client_uuid。legacy 雲端列的 workout_client_uuid 為 NULL，不回填的話
-    // pull 會因 `對不到父 → continue` 把每一筆都略過 → workout 還原後零組 set（P0-C）。
-    // 父鏈回填：legacy 列的 <parent>_client_uuid 為 NULL，不補的話 pull 會因對不到父而全部略過。
-    // eggs.pet_client_uuid 因 eggs↔pets 互指（eggs 先 reconcile 時 pets 尚無 uuid）不在此處理；
-    // 它只是軟連結，pull 端 backfill 對不到就略過，不影響資料完整性。
+    // 父鏈對照表必須在**算 natural key 之前**建好並 enrich 進雲端列：
+    // legacy 雲端列的 <parent>_client_uuid 為 NULL，naturalKeyOf 會 fallback 到 <parent>_local_id（整數），
+    // 而本地列（localNormalized 的 join 分支）用的是父 uuid → 兩邊永不相符 → claims 恆空 → 全部 orphan
+    // → push 以新 uuid INSERT 一份 → 雲端每筆子表列都多長一份、之後每次同步 uuid 來回震盪。
     const chain = PARENT_CHAIN[table];
     let parentUuidByLocalId: Map<number, string> | null = null;
     if (chain) {
@@ -1078,6 +1091,14 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
         (pw ?? []).filter((r: any) => r.client_uuid != null && r.local_id != null).map((r: any) => [r.local_id, r.client_uuid]),
       );
     }
+    const enrich = (r: any) =>
+      chain && parentUuidByLocalId && r[chain.localIdField] != null
+        ? { ...r, [chain.uuidField]: parentUuidByLocalId.get(r[chain.localIdField]) ?? r[chain.uuidField] }
+        : r;
+
+    const cloudRows = (data ?? []).map((r) => normalizeKeyFields(table, enrich(r)));
+    const localRows = await localNormalized(table, localCols);
+    const { claims, orphans } = planReconcile(table, cloudRows, localRows);
 
     // 逐列發 HTTP 對重度使用者會逾時（P2-A）→ 改批次 upsert（衝突鍵用 legacy local_id，
     // reconcile 只在仍有 legacy 列時才有事做，此時 006 必然尚未執行）。
@@ -1160,7 +1181,7 @@ async function runFullSync(userId: string): Promise<SyncStats> {
     await reconcileLegacyCloud(userId, 'pets', 'created_at');
     await reconcileLegacyCloud(userId, 'achievements', 'code');
     await reconcileLegacyCloud(userId, 'custom_foods', 'created_at, name');
-    await reconcileLegacyCloud(userId, 'water_logs', 'logged_at, amount_ml');
+    await reconcileLegacyCloud(userId, 'water_logs', 'logged_at, amount_ml, created_at');
     await reconcileLegacyCloud(userId, 'bowel_logs', 'logged_at');
     await reconcileLegacyCloud(userId, 'sleep_logs', 'bedtime_at, wake_at');
     await reconcileLegacyCloud(userId, 'period_days', 'day_key');
