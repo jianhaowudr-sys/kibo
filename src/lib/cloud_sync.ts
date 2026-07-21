@@ -59,6 +59,27 @@ async function hasUuidCapability(): Promise<boolean> {
   }
 }
 
+const SYNC_UUID_TABLES = [
+  'workouts', 'workout_sets', 'meals', 'body_measurements', 'routines', 'routine_exercises',
+  'eggs', 'pets', 'achievements', 'custom_foods', 'water_logs', 'bowel_logs', 'sleep_logs', 'period_days',
+];
+
+/**
+ * ⚠️ 關鍵前提：整套 uuid 同步假設「每個本地列都有 sync_uuid」。
+ * 但 backfill 只在 ensureSchema()（app 啟動）跑一次，而 repo.ts 的各 INSERT **不寫 sync_uuid**
+ * （該欄不在 drizzle schema）→ **本 session 新建的列 uuid 全是 NULL**，而 debounce 觸發同步的
+ * 正是那筆新資料。不補的話：push payload key 不一致（PGRST102 整表失敗）或 client_uuid 落 NULL
+ * → ON CONFLICT 因 NULL distinct 永不命中 → 每次同步都 INSERT 一筆新雲端列（無限重複）。
+ * 故每次同步前先冪等補一次。
+ */
+async function ensureLocalSyncUuids(): Promise<void> {
+  for (const t of SYNC_UUID_TABLES) {
+    try {
+      await sqliteDb.runAsync(`UPDATE "${t}" SET sync_uuid = lower(hex(randomblob(16))) WHERE sync_uuid IS NULL`);
+    } catch (e) { warn(`ensureLocalSyncUuids(${t})`, e); }
+  }
+}
+
 /** 本地某表 id → sync_uuid（sync_uuid 由 runAdditions 加欄，不在 drizzle schema，故用 raw SQL）。 */
 async function localUuidById(table: string): Promise<Map<number, string>> {
   try {
@@ -69,6 +90,19 @@ async function localUuidById(table: string): Promise<Map<number, string>> {
   } catch {
     return new Map();
   }
+}
+
+/**
+ * cap=true 時，pull 只處理**已有 client_uuid** 的雲端列。
+ * 配 uuid 是 reconcile 的職責；若 pull 自己替 null-uuid 列生一個本地 uuid，雲端那筆仍是 NULL →
+ * 下次 push 以新 uuid upsert 會 INSERT 出第二筆雲端列，之後 reconcile 又給原列配 uuid、
+ * pull 再 adopt 回去 → **uuid 每次同步來回震盪、雲端永久多一筆過期孤兒列**。
+ */
+function withUuidOnly(table: string, cloud: any[]): any[] {
+  const ok = cloud.filter((c) => !!c.client_uuid);
+  const skipped = cloud.length - ok.length;
+  if (skipped > 0) _warnings.push(`${table}: ${skipped} 筆雲端列尚無 client_uuid，待 reconcile 後再還原`);
+  return ok;
 }
 
 /** 本地某表已有的 sync_uuid 集合（pull 比對用）。 */
@@ -634,9 +668,10 @@ async function pullWorkouts(userId: string, cap: boolean): Promise<Map<string, n
     return parentMap;
   }
 
+  const syncable = withUuidOnly('workouts', cloud);
   const plan = planPull(
     'workouts',
-    cloud.map((c) => normalizeKeyFields('workouts', c)),
+    syncable.map((c) => normalizeKeyFields('workouts', c)),
     await localUuidSet('workouts'),
     await localNormalized('workouts', 'started_at'),
   );
@@ -647,7 +682,7 @@ async function pullWorkouts(userId: string, cap: boolean): Promise<Map<string, n
     const newId = ins[0]?.id;
     if (newId) {
       // 雲端無 uuid 時本地自生，避免 sync_uuid 留 NULL → 下次同步又被判為「不存在」重複插入
-      await sqliteDb.runAsync('UPDATE workouts SET sync_uuid = ? WHERE id = ?', [w.client_uuid ?? Crypto.randomUUID(), newId]);
+      await sqliteDb.runAsync('UPDATE workouts SET sync_uuid = ? WHERE id = ?', [w.client_uuid as string, newId]);
     }
   }
   // 建立 uuid → 本地 id 對照（含既有列），供 workout_sets 重映父 FK
@@ -678,9 +713,10 @@ async function pullWorkoutSets(userId: string, cap: boolean, parentMap: Map<stri
     return;
   }
 
+  const syncable = withUuidOnly('workout_sets', cloud);
   const plan = planPull(
     'workout_sets',
-    cloud.map((c) => normalizeKeyFields('workout_sets', c)),
+    syncable.map((c) => normalizeKeyFields('workout_sets', c)),
     await localUuidSet('workout_sets'),
     await localNormalized('workout_sets', 'created_at, order_idx, workout_id'),
   );
@@ -703,7 +739,7 @@ async function pullWorkoutSets(userId: string, cap: boolean, parentMap: Map<stri
     // 雲端無 uuid（reconcile 中斷等）時本地自生一個，避免 sync_uuid 永遠 NULL → 每次同步重複插入
     if (newId) {
       await sqliteDb.runAsync('UPDATE workout_sets SET sync_uuid = ? WHERE id = ?',
-        [s.client_uuid ?? Crypto.randomUUID(), newId]);
+        [s.client_uuid as string, newId]);
     }
   }
   if (skippedNoParent > 0) {
@@ -742,9 +778,10 @@ async function pullMeals(userId: string, cap: boolean) {
     return;
   }
 
+  const syncable = withUuidOnly('meals', cloud);
   const plan = planPull(
     'meals',
-    cloud.map((c) => normalizeKeyFields('meals', c)),
+    syncable.map((c) => normalizeKeyFields('meals', c)),
     await localUuidSet('meals'),
     await localNormalized('meals', 'logged_at, meal_type'),
   );
@@ -753,7 +790,7 @@ async function pullMeals(userId: string, cap: boolean) {
     const ins = await db.insert(schema.meals).values(vals(m) as any).returning({ id: schema.meals.id });
     const newId = ins[0]?.id;
     if (newId) {
-      await sqliteDb.runAsync('UPDATE meals SET sync_uuid = ? WHERE id = ?', [m.client_uuid ?? Crypto.randomUUID(), newId]);
+      await sqliteDb.runAsync('UPDATE meals SET sync_uuid = ? WHERE id = ?', [m.client_uuid as string, newId]);
     }
   }
 }
@@ -792,9 +829,10 @@ async function pullBody(userId: string, cap: boolean) {
     return;
   }
 
+  const syncable = withUuidOnly('body_measurements', cloud);
   const plan = planPull(
     'body_measurements',
-    cloud.map((c) => normalizeKeyFields('body_measurements', c)),
+    syncable.map((c) => normalizeKeyFields('body_measurements', c)),
     await localUuidSet('body_measurements'),
     await localNormalized('body_measurements', 'measured_at'),
   );
@@ -803,7 +841,7 @@ async function pullBody(userId: string, cap: boolean) {
     const ins = await db.insert(schema.bodyMeasurements).values(vals(b) as any).returning({ id: schema.bodyMeasurements.id });
     const newId = ins[0]?.id;
     if (newId) {
-      await sqliteDb.runAsync('UPDATE body_measurements SET sync_uuid = ? WHERE id = ?', [b.client_uuid ?? Crypto.randomUUID(), newId]);
+      await sqliteDb.runAsync('UPDATE body_measurements SET sync_uuid = ? WHERE id = ?', [b.client_uuid as string, newId]);
     }
   }
 }
@@ -853,15 +891,17 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
     // reconcile 只在仍有 legacy 列時才有事做，此時 006 必然尚未執行）。
     const claimByLocalId = new Map(claims.map((c) => [c.cloudLocalId, c.syncUuid]));
     const patches: any[] = [];
-    for (const cr of cloudRows) {
-      if (cr.local_id === undefined || cr.local_id === null) continue;
+    for (const raw of (data ?? []) as any[]) {
+      if (raw.local_id === undefined || raw.local_id === null) continue;
+      // 帶**原始列**（未經 normalizeKeyFields，時間戳仍是 ISO）：若目標列在 select 與 upsert 之間
+      // 被他機刪除，ON CONFLICT 不命中 → 走 INSERT，缺 NOT NULL 欄會 23502 整批失敗。帶全欄即可免疫。
       const patch: any = {
+        ...raw,
         user_id: userId,
-        local_id: cr.local_id,
-        client_uuid: claimByLocalId.get(cr.local_id) ?? Crypto.randomUUID(),
+        client_uuid: claimByLocalId.get(raw.local_id) ?? Crypto.randomUUID(),
       };
-      if (parentUuidByLocalId && cr.workout_local_id != null) {
-        const pu = parentUuidByLocalId.get(cr.workout_local_id);
+      if (parentUuidByLocalId && raw.workout_local_id != null) {
+        const pu = parentUuidByLocalId.get(raw.workout_local_id);
         if (pu) patch.workout_client_uuid = pu;
       }
       patches.push(patch);
@@ -913,8 +953,9 @@ async function runFullSync(userId: string): Promise<SyncStats> {
     db.select({ c: sql<number>`count(*)` }).from(schema.bodyMeasurements),
   ]);
 
-  // 005 已跑 → 先 reconcile 雲端 legacy 列（補 uuid），再 push/pull
+  // 005 已跑 → 先補齊本地新列的 uuid，再 reconcile 雲端 legacy 列（補 uuid），最後 push/pull
   if (cap) {
+    await ensureLocalSyncUuids();
     await reconcileLegacyCloud(userId, 'workouts', 'started_at');
     await reconcileLegacyCloud(userId, 'meals', 'logged_at, meal_type');
     await reconcileLegacyCloud(userId, 'body_measurements', 'measured_at');

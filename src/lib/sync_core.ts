@@ -85,19 +85,29 @@ export function planPull(
   }
   const toInsert: CloudRow[] = [];
   const toAdopt: { cloudUuid: string; localSyncUuid: string }[] = [];
-  for (const cr of cloudRows) {
+  // 有 uuid 的先處理：否則一筆 null-uuid 列可能先吃掉候選名額，讓真正該 adopt 的列落到 insert。
+  // 雲端回傳順序 Postgres 不保證，排序後結果才具決定性。
+  const ordered = [...cloudRows].sort((a, b) => (a.client_uuid ? 0 : 1) - (b.client_uuid ? 0 : 1));
+  // 「候選名額」(byNat，adopt 會消耗) 與「該 natural key 本地已存在」(covered，永不消耗) 必須分開：
+  // 只用 byNat 的話，uuid 列 adopt 後把名額吃掉，同 natKey 的 null-uuid 列就找不到對應 → 被當新列插入 → 仍重複。
+  const covered = new Set(byNat.keys());
+  for (const cr of ordered) {
     const uuid = cr.client_uuid;
     if (uuid && localSyncUuids.has(uuid)) continue;
     const natKey = naturalKeyOf(table, cr);
     const localUuid = natKey ? byNat.get(natKey) : undefined;
     if (localUuid) {
-      // 該本地列已被這筆雲端列佔用 → 移出候選，避免同 natural key 的第二筆雲端列
-      // 又 adopt 到同一列（UPDATE 會 0 rows、靜默消失）。
-      byNat.delete(natKey!);
-      // uuid 為 null（reconcile 未跑或中斷）但 natural key 已存在 → 本地已有這筆，跳過防重。
-      if (uuid) toAdopt.push({ cloudUuid: uuid, localSyncUuid: localUuid });
-      continue;
+      if (uuid) {
+        // 佔用該本地列 → 移出候選，避免同 natural key 的第二筆又 adopt 到它（UPDATE 0 rows、靜默消失）
+        byNat.delete(natKey!);
+        toAdopt.push({ cloudUuid: uuid, localSyncUuid: localUuid });
+      }
+      continue; // null uuid + 有對應本地列 → 同筆資料，跳過
     }
+    // 無可用候選：null uuid 沒有身分可辨識，若該 natural key 本地已存在就一律跳過防重
+    // （它會在 reconcile 拿到 uuid 後，下一輪才以正確身分處理）。
+    // 有 uuid 的列則是獨立身分 → 照插，避免資料遺失（P1-C）。
+    if (!uuid && natKey && covered.has(natKey)) continue;
     toInsert.push(cr);
   }
   return { toInsert, toAdopt };

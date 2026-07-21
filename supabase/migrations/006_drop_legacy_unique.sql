@@ -12,10 +12,17 @@
 -- Postgres 會因找不到可推論的唯一約束而回 42P10 → **連 v1.1.0 自己的 push 也全部失敗**，
 -- 不只是舊版 client。原本 header 宣稱「只有舊版會失敗」是錯的。
 -- 先決條件（全部滿足才可執行）：
---   1. app 端 cap=true 路徑的 6 個 P0 已修（見 cloud_sync.ts 的 KILL SWITCH 註解）。
---   2. push 已改用 onConflict: 'user_id,client_uuid'（需 005 的完整 unique index）。
---   3. 已在測試 Supabase 專案完整演練 005 → app → 006。
+--   1. app 端 cap=true 路徑的 P0 已修（見 cloud_sync.ts 的 KILL SWITCH 註解）。
+--   2. **已上架 ENABLE_UUID_SYNC=true 的版本**（光是程式碼改了不算——KILL SWITCH 關著時
+--      conflictTarget(false) 仍是 user_id,local_id，006 一跑那個版本的 push 也會 42P10）。
+--   3. 已在測試 Supabase 專案完整演練 005 → app(cap=true) → 006。
 --   4. 商店版本分佈顯示舊版占比夠低（建議 <10%）。
+--
+-- ⚠️「開 ENABLE_UUID_SYNC」與「跑 006」必須是**同一個決策點**，不可分離：
+-- cap=true 的 push 不送 local_id，新雲端列的 local_id 會是 NULL；而 v1.0.7 的 pull 是
+-- `if (localIds.has(w.local_id)) continue; insert({id: w.local_id})` —— local_id 為 NULL 時
+-- 該判斷恆為 false、SQLite 又會自動配號 → **舊版 client 每次同步都重複插入、無上限**。
+-- 故兩者都必須等舊版占比夠低才動。
 -- 跑了不可逆。在 Supabase SQL Editor 執行。
 
 do $$

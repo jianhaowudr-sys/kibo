@@ -129,6 +129,18 @@ ok(naturalKeyOf('unknown_tbl', {}) === null, '未知表 → null');
   ok(r.toInsert.length === 1 && r.toInsert[0].client_uuid === 'C2', '第二筆改為 insert，不靜默消失');
 }
 
+// ---- NEW-P1-1 回歸：null-uuid 列不得吃掉候選名額（否則同 natKey 且有 uuid 的列被誤插成重複）----
+// 兩種雲端回傳順序都必須得到相同結果（Postgres 不保證順序）
+for (const order of ['nullFirst', 'uuidFirst'] as const) {
+  const nullRow = { client_uuid: null, started_at: 424 };
+  const uuidRow = { client_uuid: 'U', started_at: 424 };
+  const cloud = order === 'nullFirst' ? [nullRow, uuidRow] : [uuidRow, nullRow];
+  const local = [{ local_id: 1, sync_uuid: 'L', started_at: 424 }];
+  const r = planPull('workouts', cloud, new Set(['L']), local);
+  ok(r.toInsert.length === 0, `[${order}] 不得插出重複列`);
+  ok(r.toAdopt.length === 1 && r.toAdopt[0].cloudUuid === 'U', `[${order}] 有 uuid 的列正確 adopt`);
+}
+
 // ---- chunk ----
 ok(JSON.stringify(chunk([1, 2, 3, 4, 5], 2)) === JSON.stringify([[1, 2], [3, 4], [5]]), 'chunk 2');
 ok(chunk([], 500).length === 0, 'chunk 空 → []');
