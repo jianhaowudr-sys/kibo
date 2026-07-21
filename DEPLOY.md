@@ -4,7 +4,7 @@
 | 欄位 | 值 |
 |---|---|
 | 平台 | Expo (EAS Build / EAS Submit) |
-| 帳號 / 團隊 | EAS 帳號/組織：`@jianhaowudrs-organization`（來源 EAS build log）；Apple：appleTeamId `XGY266T6Y8`、appleId `m013020082@gmail.com`；**登入帳號/email：______（請確認 `eas whoami` 與 Apple/Google 帳號一次）** |
+| 帳號 / 團隊 | EAS 登入帳號：**`jianhaowu.dr`**（Owner；同時擁有組織 `@jianhaowudrs-organization`）— 2026-07-21 以 `eas whoami` 確認。Apple：appleTeamId `XGY266T6Y8`、appleId `m013020082@gmail.com`。<br>⚠️ 注意本機還有另外兩個身分容易混淆：git push 憑證是 **`jianhaowudr-sys`**（GitHub，已 per-project 綁定）、git commit 署名是 `JJGOD2`。另有 `zhuoyiclinic-coder`（琢藝專案，**與 kibo 無關**）。 |
 | 專案名稱 / ID | EAS project `kibo`；EAS projectId `741662aa-5bb4-4554-8df3-166a7957dd39` |
 | 線上網址 | iOS：App Store（bundleId `app.kibo.fitness`、ascAppId `6764039298`）；Android：Google Play（package `app.kibo.fitness`） |
 | 部署方式 | EAS build（雲端打包）＋ EAS submit（上架商店） |
