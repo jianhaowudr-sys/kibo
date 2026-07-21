@@ -602,6 +602,14 @@ function normalizeKeyFields(table: string, row: any): any {
     case 'meals': return { ...row, logged_at: toMs(row.logged_at) };
     case 'body_measurements': return { ...row, measured_at: toMs(row.measured_at) };
     case 'workout_sets': return { ...row, created_at: toMs(row.created_at) };
+    case 'routines': return { ...row, created_at: toMs(row.created_at) };
+    case 'eggs': return { ...row, created_at: toMs(row.created_at) };
+    case 'pets': return { ...row, created_at: toMs(row.created_at) };
+    case 'custom_foods': return { ...row, created_at: toMs(row.created_at) };
+    case 'water_logs': return { ...row, logged_at: toMs(row.logged_at) };
+    case 'bowel_logs': return { ...row, logged_at: toMs(row.logged_at) };
+    case 'sleep_logs': return { ...row, bedtime_at: toMs(row.bedtime_at), wake_at: toMs(row.wake_at) };
+    // period_days(day_key)、achievements(code)、routine_exercises(父uuid+order_idx) 的 key 無時間戳
     default: return row;
   }
 }
@@ -862,6 +870,186 @@ export type SyncStats = {
   warnings: string[];
 };
 
+// ============================================================
+// Pull（其餘 10 張表）—— 讓「重裝後還原」真的完整。
+// ⚠️ 這些表**只在 cap=true 走**：legacy 模式下它們原本就是 push-only，加一條 local_id-based pull
+// 會重演 P0-3 的撞號問題，也會改變既有行為。cap=false 時維持現況 = 零回歸。
+// ============================================================
+
+/** 無父鏈的表共用的 pull。回傳 uuid → 本地 id 對照（父表用得到）。 */
+async function pullSimple(opts: {
+  userId: string;
+  table: string;
+  localKeyCols: string;
+  drizzleTable: any;
+  insertVals: (c: any, meId: number) => any;
+}): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  const { userId, table, localKeyCols, drizzleTable, insertVals } = opts;
+  try {
+    const cloud = await pullTable<any>(userId, table);
+    const meId = (await db.select({ id: schema.users.id }).from(schema.users).limit(1))[0]?.id;
+    if (!meId) return map;
+    if (cloud.length > 0) {
+      const plan = planPull(
+        table,
+        withUuidOnly(table, cloud).map((c) => normalizeKeyFields(table, c)),
+        await localUuidSet(table),
+        await localNormalized(table, localKeyCols),
+      );
+      await adoptUuids(table, plan.toAdopt);
+      for (const c of plan.toInsert) {
+        const ins = await db.insert(drizzleTable).values(insertVals(c, meId) as any).returning({ id: drizzleTable.id });
+        const newId = ins[0]?.id;
+        if (newId) {
+          await sqliteDb.runAsync(`UPDATE "${table}" SET sync_uuid = ? WHERE id = ?`, [c.client_uuid as string, newId]);
+        }
+      }
+    }
+    for (const r of await sqliteDb.getAllAsync<{ id: number; sync_uuid: string }>(
+      `SELECT id, sync_uuid FROM "${table}" WHERE sync_uuid IS NOT NULL`)) {
+      map.set(r.sync_uuid, r.id);
+    }
+  } catch (e) { warn(`pull(${table})`, e); }
+  return map;
+}
+
+/** routines → routine_exercises（子表需重映父 FK + 依 exercise_name 解析動作）。 */
+async function pullRoutines(userId: string) {
+  const routineMap = await pullSimple({
+    userId, table: 'routines', localKeyCols: 'created_at, name', drizzleTable: schema.routines,
+    insertVals: (r, meId) => ({
+      userId: meId, name: r.name, emoji: r.emoji, note: r.note,
+      lastSnapshotJson: r.last_snapshot_json ? JSON.stringify(r.last_snapshot_json) : null,
+      lastSavedAt: r.last_saved_at ? new Date(r.last_saved_at) : null,
+      sortOrder: r.sort_order ?? 0,
+      createdAt: new Date(r.created_at),
+    }),
+  });
+
+  try {
+    const cloud = await pullTable<any>(userId, 'routine_exercises');
+    if (cloud.length === 0) return;
+    const plan = planPull(
+      'routine_exercises',
+      withUuidOnly('routine_exercises', cloud).map((c) => normalizeKeyFields('routine_exercises', c)),
+      await localUuidSet('routine_exercises'),
+      await localNormalized('routine_exercises', 'order_idx'),
+    );
+    await adoptUuids('routine_exercises', plan.toAdopt);
+    let skipped = 0;
+    for (const x of plan.toInsert) {
+      const parentId = x.routine_client_uuid ? routineMap.get(x.routine_client_uuid) : undefined;
+      if (!parentId) { skipped++; continue; }
+      const exId = await findOrCreateExercise(x.exercise_name ?? 'Unknown', x.exercise_unit ?? 'reps');
+      const ins = await db.insert(schema.routineExercises).values({
+        routineId: parentId, exerciseId: exId, orderIdx: x.order_idx, targetSets: x.target_sets ?? 3,
+      } as any).returning({ id: schema.routineExercises.id });
+      const newId = ins[0]?.id;
+      if (newId) await sqliteDb.runAsync('UPDATE routine_exercises SET sync_uuid = ? WHERE id = ?', [x.client_uuid as string, newId]);
+    }
+    if (skipped > 0) _warnings.push(`routine_exercises: ${skipped} 筆因父課表對不到而略過`);
+  } catch (e) { warn('pull(routine_exercises)', e); }
+}
+
+/** eggs ↔ pets 互指：先插 eggs（pet_id 留空）→ 插 pets（用 egg uuid 對映）→ 回填 eggs.pet_id。 */
+async function pullEggsPets(userId: string) {
+  const eggMap = await pullSimple({
+    userId, table: 'eggs', localKeyCols: 'created_at', drizzleTable: schema.eggs,
+    insertVals: (e, meId) => ({
+      userId: meId, type: e.type, currentExp: e.current_exp, requiredExp: e.required_exp,
+      stage: e.stage, hatchedAt: e.hatched_at ? new Date(e.hatched_at) : null,
+      petId: null, createdAt: new Date(e.created_at),
+      liberationPct: e.liberation_pct ?? 0, targetPct: e.target_pct ?? 100,
+      skinId: e.skin_id, rarity: e.rarity, isLegacy: e.is_legacy ?? 0,
+    }),
+  });
+
+  const petMap = await pullSimple({
+    userId, table: 'pets', localKeyCols: 'created_at', drizzleTable: schema.pets,
+    insertVals: (p, meId) => ({
+      userId: meId,
+      eggId: p.egg_client_uuid ? (eggMap.get(p.egg_client_uuid) ?? null) : null,
+      name: p.name, species: p.species, type: p.type, level: p.level, exp: p.exp,
+      stage: p.stage, emoji: p.emoji, createdAt: new Date(p.created_at),
+      skinId: p.skin_id, rarity: p.rarity, isLegacy: p.is_legacy ?? 1,
+    }),
+  });
+
+  // 回填 eggs.pet_id（雲端 egg 帶 pet_client_uuid）
+  try {
+    const cloud = await pullTable<any>(userId, 'eggs');
+    for (const e of cloud) {
+      if (!e.client_uuid || !e.pet_client_uuid) continue;
+      const localEggId = eggMap.get(e.client_uuid);
+      const localPetId = petMap.get(e.pet_client_uuid);
+      if (localEggId && localPetId) {
+        await sqliteDb.runAsync('UPDATE eggs SET pet_id = ? WHERE id = ? AND pet_id IS NULL', [localPetId, localEggId]);
+      }
+    }
+  } catch (e) { warn('pull(eggs.pet_id backfill)', e); }
+}
+
+/** 其餘平表：achievements / custom_foods / 四張健康表。 */
+async function pullFlatTables(userId: string) {
+  await pullSimple({
+    userId, table: 'achievements', localKeyCols: 'code', drizzleTable: schema.achievements,
+    insertVals: (a, meId) => ({
+      userId: meId, code: a.code, title: a.title, description: a.description,
+      unlockedAt: new Date(a.unlocked_at),
+    }),
+  });
+  await pullSimple({
+    userId, table: 'custom_foods', localKeyCols: 'created_at, name', drizzleTable: schema.customFoods,
+    insertVals: (f, meId) => ({
+      userId: meId, name: f.name, emoji: f.emoji ?? '🍽',
+      caloriesKcal: f.calories_kcal ?? 0, proteinG: f.protein_g ?? 0, carbG: f.carb_g ?? 0, fatG: f.fat_g ?? 0,
+      portion: f.portion, photoUri: f.photo_uri, source: f.source ?? 'manual', barcode: f.barcode,
+      useCount: f.use_count ?? 0, lastUsedAt: f.last_used_at ? new Date(f.last_used_at) : null,
+      createdAt: new Date(f.created_at),
+    }),
+  });
+  await pullSimple({
+    userId, table: 'water_logs', localKeyCols: 'logged_at, amount_ml', drizzleTable: schema.waterLogs,
+    insertVals: (w, meId) => ({
+      userId: meId, amountMl: w.amount_ml, loggedAt: new Date(w.logged_at),
+      batchKey: w.batch_key, createdAt: new Date(w.created_at),
+    }),
+  });
+  await pullSimple({
+    userId, table: 'bowel_logs', localKeyCols: 'logged_at', drizzleTable: schema.bowelLogs,
+    insertVals: (b, meId) => ({
+      userId: meId, loggedAt: new Date(b.logged_at), bristol: b.bristol ?? 4,
+      hasBlood: b.has_blood ?? 0, hasPain: b.has_pain ?? 0, notes: b.notes,
+      createdAt: new Date(b.created_at),
+    }),
+  });
+  await pullSimple({
+    userId, table: 'sleep_logs', localKeyCols: 'bedtime_at, wake_at', drizzleTable: schema.sleepLogs,
+    insertVals: (s, meId) => ({
+      userId: meId, bedtimeAt: new Date(s.bedtime_at), wakeAt: new Date(s.wake_at),
+      durationMin: s.duration_min, quality: s.quality ?? 3, dayKey: s.day_key,
+      kind: s.kind ?? 'main', assignedDayKey: s.assigned_day_key ?? s.day_key,
+      createdAt: new Date(s.created_at),
+    }),
+  });
+  await pullSimple({
+    userId, table: 'period_days', localKeyCols: 'day_key', drizzleTable: schema.periodDays,
+    insertVals: (p, meId) => ({
+      userId: meId, date: new Date(p.date), dayKey: p.day_key, flow: p.flow ?? 'medium',
+      symptomsJson: p.symptoms_json, notes: p.notes, isCycleStart: p.is_cycle_start ?? 0,
+      createdAt: new Date(p.created_at),
+    }),
+  });
+}
+
+/** 子表 → 父表的對照（reconcile 回填父 client_uuid 用）。 */
+const PARENT_CHAIN: Record<string, { parentTable: string; localIdField: string; uuidField: string }> = {
+  workout_sets: { parentTable: 'workouts', localIdField: 'workout_local_id', uuidField: 'workout_client_uuid' },
+  routine_exercises: { parentTable: 'routines', localIdField: 'routine_local_id', uuidField: 'routine_client_uuid' },
+  pets: { parentTable: 'eggs', localIdField: 'egg_local_id', uuidField: 'egg_client_uuid' },
+};
+
 /**
  * Reconcile：處理雲端 client_uuid 為 null 的 legacy 列（005 之後第一次同步）。
  * - claim：與本地唯一一筆 natural key + local_id 皆相符 → 回寫本地 sync_uuid（判定同一列）。
@@ -879,9 +1067,13 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
 
     // 子表：同時回填父 client_uuid。legacy 雲端列的 workout_client_uuid 為 NULL，不回填的話
     // pull 會因 `對不到父 → continue` 把每一筆都略過 → workout 還原後零組 set（P0-C）。
+    // 父鏈回填：legacy 列的 <parent>_client_uuid 為 NULL，不補的話 pull 會因對不到父而全部略過。
+    // eggs.pet_client_uuid 因 eggs↔pets 互指（eggs 先 reconcile 時 pets 尚無 uuid）不在此處理；
+    // 它只是軟連結，pull 端 backfill 對不到就略過，不影響資料完整性。
+    const chain = PARENT_CHAIN[table];
     let parentUuidByLocalId: Map<number, string> | null = null;
-    if (table === 'workout_sets') {
-      const { data: pw } = await supabase.from('workouts').select('local_id, client_uuid').eq('user_id', userId);
+    if (chain) {
+      const { data: pw } = await supabase.from(chain.parentTable).select('local_id, client_uuid').eq('user_id', userId);
       parentUuidByLocalId = new Map(
         (pw ?? []).filter((r: any) => r.client_uuid != null && r.local_id != null).map((r: any) => [r.local_id, r.client_uuid]),
       );
@@ -900,9 +1092,9 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
         user_id: userId,
         client_uuid: claimByLocalId.get(raw.local_id) ?? Crypto.randomUUID(),
       };
-      if (parentUuidByLocalId && raw.workout_local_id != null) {
-        const pu = parentUuidByLocalId.get(raw.workout_local_id);
-        if (pu) patch.workout_client_uuid = pu;
+      if (chain && parentUuidByLocalId && raw[chain.localIdField] != null) {
+        const pu = parentUuidByLocalId.get(raw[chain.localIdField]);
+        if (pu) patch[chain.uuidField] = pu;
       }
       patches.push(patch);
     }
@@ -956,10 +1148,22 @@ async function runFullSync(userId: string): Promise<SyncStats> {
   // 005 已跑 → 先補齊本地新列的 uuid，再 reconcile 雲端 legacy 列（補 uuid），最後 push/pull
   if (cap) {
     await ensureLocalSyncUuids();
+    // 父表先於子表：子表 reconcile 要讀父的 client_uuid 來回填父鏈欄
     await reconcileLegacyCloud(userId, 'workouts', 'started_at');
     await reconcileLegacyCloud(userId, 'meals', 'logged_at, meal_type');
     await reconcileLegacyCloud(userId, 'body_measurements', 'measured_at');
     await reconcileLegacyCloud(userId, 'workout_sets', 'created_at, order_idx, workout_id');
+    // 其餘 10 張表也要 reconcile，否則它們的 legacy 列永遠沒有 uuid、pull 會全部略過
+    await reconcileLegacyCloud(userId, 'routines', 'created_at, name');
+    await reconcileLegacyCloud(userId, 'routine_exercises', 'order_idx');
+    await reconcileLegacyCloud(userId, 'eggs', 'created_at');
+    await reconcileLegacyCloud(userId, 'pets', 'created_at');
+    await reconcileLegacyCloud(userId, 'achievements', 'code');
+    await reconcileLegacyCloud(userId, 'custom_foods', 'created_at, name');
+    await reconcileLegacyCloud(userId, 'water_logs', 'logged_at, amount_ml');
+    await reconcileLegacyCloud(userId, 'bowel_logs', 'logged_at');
+    await reconcileLegacyCloud(userId, 'sleep_logs', 'bedtime_at, wake_at');
+    await reconcileLegacyCloud(userId, 'period_days', 'day_key');
   }
 
   await pushProfile(userId);
@@ -987,6 +1191,13 @@ async function runFullSync(userId: string): Promise<SyncStats> {
   await pullWorkoutSets(userId, cap, parentMap);
   await pullMeals(userId, cap);
   await pullBody(userId, cap);
+  // 其餘 10 張表只在 cap=true 還原（legacy 模式下它們本來就是 push-only，加 local_id-based pull
+  // 會重演 P0-3 撞號問題；維持現況 = 零回歸）。
+  if (cap) {
+    await pullRoutines(userId);
+    await pullEggsPets(userId);
+    await pullFlatTables(userId);
+  }
 
   const [w1, s1, m1, b1] = await Promise.all([
     db.select({ c: sql<number>`count(*)` }).from(schema.workouts),
