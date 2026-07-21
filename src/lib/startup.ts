@@ -53,17 +53,46 @@ export function runBackgroundStartup(): void {
     } catch (e) {
       console.warn('[startup] 登入態載入失敗', e);
     }
+    // 每次啟動重排通知：讓喝水 interval→固定每日時間的遷移實際生效（migration 只改記憶體，
+    // 需 rescheduleAll 才會把新 DAILY 觸發排進系統；否則舊 DATE 觸發過期後就再也不響）。
     try {
-      const { user, pets } = useAppStore.getState();
-      if (user) {
-        const { generateDailyMessages } = await import('@/lib/pet_messages');
-        await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
-        const { maybeGenerateWeeklyReview } = await import('@/lib/weekly_review');
-        await maybeGenerateWeeklyReview(user.id, pets[0] ?? null);
-        await useAppStore.getState().refreshHealth();
+      // 必須先確認 user 已載入：bootstrap 在 !user 時會提早返回而不碰 healthSettings，
+      // 此時拿到的是「全部關閉」的預設值 → rescheduleAll 會先 cancelAll 再什麼都不排，
+      // 等於把使用者所有提醒清光。
+      if (useAppStore.getState().user) {
+        const { rescheduleAll } = await import('@/lib/reminders');
+        await rescheduleAll(useAppStore.getState().healthSettings);
       }
     } catch (e) {
-      console.warn('[startup] 寵物訊息生成失敗', e);
+      console.warn('[startup] 通知重排失敗', e);
+    }
+    // 恢復未完成的訓練 session（app 被系統回收後可接續，首頁按鈕會顯示「繼續訓練」）
+    try {
+      await useAppStore.getState().restoreWorkoutSession();
+    } catch (e) {
+      console.warn('[startup] 訓練 session 恢復失敗', e);
+    }
+
+    // per-step try/catch：任一步失敗不吞掉後續（原本共用一個 try，訊息失敗會連帶跳過週回顧/refreshHealth）
+    const { user, pets } = useAppStore.getState();
+    if (user) {
+      try {
+        const { generateDailyMessages } = await import('@/lib/pet_messages');
+        await generateDailyMessages(user.id, pets[0] ?? null, user.streak);
+      } catch (e) {
+        console.warn('[startup] 寵物訊息生成失敗', e);
+      }
+      try {
+        const { maybeGenerateWeeklyReview } = await import('@/lib/weekly_review');
+        await maybeGenerateWeeklyReview(user.id, pets[0] ?? null);
+      } catch (e) {
+        console.warn('[startup] 週回顧生成失敗', e);
+      }
+      try {
+        await useAppStore.getState().refreshHealth();
+      } catch (e) {
+        console.warn('[startup] refreshHealth 失敗', e);
+      }
     }
     end();
   })();

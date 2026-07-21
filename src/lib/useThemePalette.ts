@@ -1,23 +1,11 @@
-import { useColorScheme as useSystemColorScheme } from 'react-native';
-import { useAppStore } from '@/stores/useAppStore';
-import { THEME_COLORS, type ThemeMode, type ResolvedTheme } from '@/lib/theme';
-import { PIXEL_COLORS } from '@/lib/palette';
-
-function resolve(mode: ThemeMode, system: 'light' | 'dark' | null | undefined): ResolvedTheme {
-  if (mode === 'system') return system === 'light' ? 'light' : 'dark';
-  return mode;
-}
+// 委派給 hooks/useThemeStyle（單一真相），保留原簽名讓呼叫端零改動。
+import { useThemeStyle } from '@/hooks/useThemeStyle';
+import type { ResolvedTheme } from '@/lib/theme';
 
 export function useThemePalette() {
-  const systemScheme = useSystemColorScheme();
-  const themeMode = useAppStore((s) => s.themeMode);
-  const themeStyle = useAppStore((s) => s.themeStyle);
-  const theme = resolve(themeMode, systemScheme);
-  return themeStyle === 'pixel' ? PIXEL_COLORS[theme] : THEME_COLORS[theme];
+  return useThemeStyle().palette;
 }
 
 export function useResolvedTheme(): ResolvedTheme {
-  const systemScheme = useSystemColorScheme();
-  const themeMode = useAppStore((s) => s.themeMode);
-  return resolve(themeMode, systemScheme);
+  return useThemeStyle().mode;
 }

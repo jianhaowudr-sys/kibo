@@ -204,7 +204,7 @@ export function SleepEditModal({ visible, onClose, promptMode }: Props) {
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700', flex: 1 }}>
               {promptMode ? '昨晚睡得怎樣？' : '編輯睡眠'}
             </Text>
-            <Pressable onPress={onClose} hitSlop={8}><Text style={{ color: palette.mute, fontSize: 22 }}>✕</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="關閉睡眠編輯" onPress={onClose} hitSlop={8}><Text style={{ color: palette.mute, fontSize: 22 }}>✕</Text></Pressable>
           </View>
 
           <ScrollView>

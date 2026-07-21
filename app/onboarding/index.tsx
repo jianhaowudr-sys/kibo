@@ -34,7 +34,8 @@ export default function Onboarding() {
     const layout = JSON.parse(JSON.stringify(DEFAULT_DASHBOARD_LAYOUT));
     layout.cards = layout.cards.map((c: any) => {
       if (c.id === 'today-workouts') c.visible = trackWorkout;
-      if (c.id === 'today-meals') c.visible = trackMeals;
+      // nutrition-summary 即「今日飲食」卡（含記錄入口）；原 today-meals 已移除
+      if (c.id === 'nutrition-summary') c.visible = trackMeals;
       if (c.id.startsWith('health-')) {
         if (c.id === 'health-period') c.visible = trackHealth && trackPeriod;
         else c.visible = trackHealth;

@@ -1,4 +1,5 @@
 import { sqliteDb } from './client';
+import { ALL_TABLES_REVERSE } from './tables';
 import { DEFAULT_EXERCISES } from '@/data/exercises';
 import { V2_EXERCISES } from '@/data/exercises_v2';
 
@@ -464,6 +465,26 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('custom_foods', 'barcode'))) {
     await sqliteDb.runAsync('ALTER TABLE custom_foods ADD COLUMN barcode TEXT');
   }
+
+  // v1.1.0 雲同步（批 D2）：14 張同步表加 client 端 sync_uuid（加法遷移）+ 純 SQL backfill + unique index。
+  // sync_uuid 是跨裝置同步主鍵，取代不穩定的 SQLite autoincrement local_id（修 P0-3 重裝/多裝置資料覆蓋）。
+  const SYNC_UUID_TABLES = [
+    'workouts', 'workout_sets', 'meals', 'body_measurements', 'routines', 'routine_exercises',
+    'eggs', 'pets', 'achievements', 'custom_foods', 'water_logs', 'bowel_logs', 'sleep_logs', 'period_days',
+  ];
+  for (const t of SYNC_UUID_TABLES) {
+    if (!(await hasColumn(t, 'sync_uuid'))) {
+      await sqliteDb.runAsync(`ALTER TABLE ${t} ADD COLUMN sync_uuid TEXT`);
+    }
+    // randomblob(16) 每列重新求值 → 每列不同的 128-bit 隨機；一條 SQL 完成 backfill，免 JS 迴圈。
+    await sqliteDb.runAsync(`UPDATE ${t} SET sync_uuid = lower(hex(randomblob(16))) WHERE sync_uuid IS NULL`);
+    await sqliteDb.runAsync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${t}_sync_uuid ON ${t}(sync_uuid)`);
+  }
+  // tombstone 佇列帶 sync_uuid（刪除同步改用 uuid；舊佇列項 uuid 為 null 時 fallback local_id）
+  if (!(await hasColumn('pending_deletions', 'sync_uuid'))) {
+    await sqliteDb.runAsync('ALTER TABLE pending_deletions ADD COLUMN sync_uuid TEXT');
+  }
+
 }
 
 async function seedV2IfNeeded(): Promise<void> {
@@ -472,30 +493,58 @@ async function seedV2IfNeeded(): Promise<void> {
   );
   if (r && r.count > 0) return;
 
-  for (const base of V2_EXERCISES) {
-    const equipments = base.equipments.length > 0 ? base.equipments : ['其他' as const];
-    for (const eq of equipments) {
-      const suffix = eq === '徒手' ? '（自重）' : `（${eq}）`;
-      const displayName = equipments.length > 1 || eq !== '徒手'
-        ? `${base.name}${equipments.length > 1 ? suffix : ''}`
-        : base.name;
-      const finalName = equipments.length === 1 ? base.name : `${base.name}${suffix}`;
-      await sqliteDb.runAsync(
-        `INSERT INTO exercises (name, category, muscle_group, part, equipment, unit, icon, exp_per_unit, is_custom, seed_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 2)`,
-        [
-          finalName,
-          base.category,
-          base.muscleGroup,
-          base.part,
-          eq,
-          base.unit,
-          base.part,
-          base.expPerUnit ?? 1,
-        ],
-      );
+  // V2 動作庫是大量插入（數百筆）→ 包交易：原子性 + 首次啟動明顯加速
+  await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+    for (const base of V2_EXERCISES) {
+      const equipments = base.equipments.length > 0 ? base.equipments : ['其他' as const];
+      for (const eq of equipments) {
+        const suffix = eq === '徒手' ? '（自重）' : `（${eq}）`;
+        const finalName = equipments.length === 1 ? base.name : `${base.name}${suffix}`;
+        await txn.runAsync(
+          `INSERT INTO exercises (name, category, muscle_group, part, equipment, unit, icon, exp_per_unit, is_custom, seed_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 2)`,
+          [
+            finalName,
+            base.category,
+            base.muscleGroup,
+            base.part,
+            eq,
+            base.unit,
+            base.part,
+            base.expPerUnit ?? 1,
+          ],
+        );
+      }
     }
-  }
+  });
+}
+
+/**
+ * FK orphan sweep（一次性）。
+ * FK 一直是 OFF（expo-sqlite 預設），schema 宣告的 cascade 從未執行、靠 repo 手寫串刪，漏寫處會留孤兒列。
+ * 啟用 PRAGMA foreign_keys=ON 前必須先清乾淨。
+ *
+ * ⚠️ 必須在 **seed 與 user 建立之後** 才跑：
+ *  - `NOT IN (SELECT id FROM exercises)` 在 exercises 尚未 seed 時是「NOT IN 空集合」= 恆真 → 會刪光整張表。
+ *  - sentinel 不能依賴 users 列（首次安裝時 user 還不存在，UPDATE 影響 0 列 → 永遠不 latch）。
+ * 故改用 PRAGMA user_version 當 sentinel，與資料列無關。
+ */
+const FK_SWEEP_VERSION = 1;
+async function fkOrphanSweepOnce(): Promise<void> {
+  const row = await sqliteDb.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  if ((row?.user_version ?? 0) >= FK_SWEEP_VERSION) return;
+  await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+    // 父不存在的子列 → 刪（notNull FK，無法置 null）
+    await txn.runAsync('DELETE FROM workout_sets WHERE workout_id NOT IN (SELECT id FROM workouts)');
+    await txn.runAsync('DELETE FROM workout_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+    await txn.runAsync('DELETE FROM routine_exercises WHERE routine_id NOT IN (SELECT id FROM routines)');
+    await txn.runAsync('DELETE FROM routine_exercises WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+    // 可為 null 的懸空 FK → 置 null（保留該列本身）
+    await txn.runAsync('UPDATE pets SET egg_id = NULL WHERE egg_id IS NOT NULL AND egg_id NOT IN (SELECT id FROM eggs)');
+    await txn.runAsync('UPDATE pet_messages SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+    await txn.runAsync('UPDATE eggs SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+  });
+  await sqliteDb.execAsync(`PRAGMA user_version = ${FK_SWEEP_VERSION}`);
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -507,45 +556,45 @@ export async function ensureSchema(): Promise<void> {
     'SELECT COUNT(*) as count FROM exercises',
   );
 
+  // 種子插入包在交易：中途 crash 不會留下「一半動作庫」的半完成狀態，
+  // 且 SQLite 批次寫入快得多（首次啟動明顯有感）。
   if (!existing || existing.count === 0) {
-    for (const ex of DEFAULT_EXERCISES) {
-      await sqliteDb.runAsync(
-        'INSERT INTO exercises (name, category, muscle_group, unit, icon, exp_per_unit, is_custom) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [ex.name!, ex.category!, ex.muscleGroup!, ex.unit!, ex.icon ?? '🏋️', ex.expPerUnit ?? 1, 0],
-      );
-    }
+    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+      for (const ex of DEFAULT_EXERCISES) {
+        await txn.runAsync(
+          'INSERT INTO exercises (name, category, muscle_group, unit, icon, exp_per_unit, is_custom) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [ex.name!, ex.category!, ex.muscleGroup!, ex.unit!, ex.icon ?? '🏋️', ex.expPerUnit ?? 1, 0],
+        );
+      }
+    });
   }
 
   const user = await sqliteDb.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) as count FROM users',
   );
 
+  // user + 初始蛋必須同進同出：只建了 user 沒建蛋會讓首頁蛋卡永久空白
   if (!user || user.count === 0) {
-    await sqliteDb.runAsync(
-      'INSERT INTO users (name, goal, created_at) VALUES (?, ?, ?)',
-      ['健身新手', 'fit', Date.now()],
-    );
-
-    await sqliteDb.runAsync(
-      'INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [1, 'strength', 0, 500, 0, Date.now()],
-    );
+    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+      await txn.runAsync(
+        'INSERT INTO users (name, goal, created_at) VALUES (?, ?, ?)',
+        ['健身新手', 'fit', Date.now()],
+      );
+      await txn.runAsync(
+        'INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [1, 'strength', 0, 500, 0, Date.now()],
+      );
+    });
   }
+
+  // 必須最後跑：需要 exercises 已 seed（否則 NOT IN 空集合會刪光）且 user 已存在
+  await fkOrphanSweepOnce();
 }
 
 export async function resetDatabase(): Promise<void> {
-  await sqliteDb.execAsync(`
-    DROP TABLE IF EXISTS meals;
-    DROP TABLE IF EXISTS body_measurements;
-    DROP TABLE IF EXISTS routine_exercises;
-    DROP TABLE IF EXISTS routines;
-    DROP TABLE IF EXISTS achievements;
-    DROP TABLE IF EXISTS pets;
-    DROP TABLE IF EXISTS eggs;
-    DROP TABLE IF EXISTS workout_sets;
-    DROP TABLE IF EXISTS workouts;
-    DROP TABLE IF EXISTS exercises;
-    DROP TABLE IF EXISTS users;
-  `);
+  // 反序（子先父後）DROP 全 22 張——避免只刪部分表造成舊資料掛回新 user（隱私）。
+  for (const t of ALL_TABLES_REVERSE) {
+    await sqliteDb.execAsync(`DROP TABLE IF EXISTS "${t}";`);
+  }
   await ensureSchema();
 }

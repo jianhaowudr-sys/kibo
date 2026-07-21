@@ -17,6 +17,7 @@ module.exports = {
           accent: 'rgb(var(--kibo-accent) / <alpha-value>)',
           success: 'rgb(var(--kibo-success) / <alpha-value>)',
           danger: 'rgb(var(--kibo-danger) / <alpha-value>)',
+          warning: 'rgb(var(--kibo-warning) / <alpha-value>)',
           strength: 'rgb(var(--kibo-strength) / <alpha-value>)',
           cardio: 'rgb(var(--kibo-cardio) / <alpha-value>)',
           flex: 'rgb(var(--kibo-flex) / <alpha-value>)',

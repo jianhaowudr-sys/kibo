@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Switch, TextInput, Alert, Platform, Linking } from 'react-native';
 import { useAppStore } from '@/stores/useAppStore';
+import { ensurePermission } from '@/lib/reminders';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import * as haptic from '@/lib/haptic';
@@ -16,11 +17,68 @@ import {
 
 const CUP_PRESETS = [200, 250, 300, 350, 400];
 const BOTTLE_PRESETS = [500, 600, 750, 1000];
+const WATER_TIME_PRESETS = ['8:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
 
 // 手掌長度 11~25 cm 步進 0.5
 const PALM_LEN_VALUES = Array.from({ length: 29 }, (_, i) => 11 + i * 0.5);
 // 手掌寬度 6~12 cm 步進 0.5
 const PALM_WID_VALUES = Array.from({ length: 13 }, (_, i) => 6 + i * 0.5);
+
+/**
+ * ⚠️ 這三個元件必須定義在模組層。
+ * 原本定義在 HealthSettings 的 render body 內 → 每次 render 都是**新的元件型別**，
+ * React 會卸載並重新掛載整棵子樹，導致睡眠時間等 TextInput **每打一個字就失焦**。
+ */
+function Section({ title, open, onToggle, children }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
+      <Pressable onPress={onToggle} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+        <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }}>{title}</Text>
+        <Text style={{ color: palette.mute, fontSize: 18 }}>{open ? '−' : '＋'}</Text>
+      </Pressable>
+      {open && <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>{children}</View>}
+    </View>
+  );
+
+}
+
+function RowSwitch({ label, value, onChange }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+      <Text style={{ color: palette.text, flex: 1 }}>{label}</Text>
+      <Switch value={value} onValueChange={onChange} />
+    </View>
+  );
+
+}
+
+function PresetRow({ label, presets, value, onSelect }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ paddingVertical: 8 }}>
+      <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {presets.map((p: number) => {
+          const active = value === p;
+          return (
+            <Pressable
+              key={p}
+              onPress={() => { haptic.tapLight(); onSelect(p); }}
+              style={{
+                paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+                backgroundColor: active ? palette.primary : palette.card,
+              }}
+            >
+              <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>{p}ml</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 export default function HealthSettings() {
   const palette = useThemePalette();
@@ -49,6 +107,28 @@ export default function HealthSettings() {
         },
       ],
     );
+  };
+
+  // 開啟提醒前先確保通知權限；未授權則不開啟並引導去設定（修 iOS 靜默不送達）。
+  const enableReminder = async (apply: (on: boolean) => void, v: boolean) => {
+    if (!v) { apply(false); return; }
+    let perm: 'granted' | 'denied' | 'blocked';
+    try {
+      perm = await ensurePermission();
+    } catch (e) {
+      // 沒有 try/catch 的話會變成 unhandled rejection 且使用者完全沒有回饋
+      console.warn('[reminders] ensurePermission failed', e);
+      Alert.alert('無法開啟提醒', '取得通知權限時發生問題，請稍後再試。');
+      return;
+    }
+    if (perm === 'granted') { apply(true); return; }
+    if (perm === 'blocked') {
+      Alert.alert('通知未開啟', '請到「設定」開啟 Kibo 的通知後再試一次。', [
+        { text: '取消', style: 'cancel' },
+        { text: '去設定', onPress: () => Linking.openSettings() },
+      ]);
+    }
+    // denied（使用者當下拒絕但可再問）→ 保持關閉，不另跳提示
   };
 
   const [waterOpen, setWaterOpen] = useState(true);
@@ -95,46 +175,6 @@ export default function HealthSettings() {
     }
   };
 
-  const Section = ({ title, open, onToggle, children }: any) => (
-    <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
-      <Pressable onPress={onToggle} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
-        <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }}>{title}</Text>
-        <Text style={{ color: palette.mute, fontSize: 18 }}>{open ? '−' : '＋'}</Text>
-      </Pressable>
-      {open && <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>{children}</View>}
-    </View>
-  );
-
-  const RowSwitch = ({ label, value, onChange }: any) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-      <Text style={{ color: palette.text, flex: 1 }}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} />
-    </View>
-  );
-
-  const PresetRow = ({ label, presets, value, onSelect }: any) => (
-    <View style={{ paddingVertical: 8 }}>
-      <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {presets.map((p: number) => {
-          const active = value === p;
-          return (
-            <Pressable
-              key={p}
-              onPress={() => { haptic.tapLight(); onSelect(p); }}
-              style={{
-                paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
-                backgroundColor: active ? palette.primary : palette.card,
-              }}
-            >
-              <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>{p}ml</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ padding: 16 }}>
       <Section title="💧 喝水" open={waterOpen} onToggle={() => setWaterOpen(!waterOpen)}>
@@ -173,25 +213,31 @@ export default function HealthSettings() {
         />
 
         <RowSwitch
-          label="提醒喝水（每 N 小時）"
+          label="提醒喝水（固定時間）"
           value={settings.water.reminder.enabled}
-          onChange={(v: boolean) => update({ water: { ...settings.water, reminder: { ...settings.water.reminder, enabled: v } } })}
+          onChange={(v: boolean) => enableReminder((on) => update({ water: { ...settings.water, reminder: { ...settings.water.reminder, enabled: on } } }), v)}
         />
         {settings.water.reminder.enabled && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={{ color: palette.mute, fontSize: 12 }}>每</Text>
-            {[60, 90, 120, 180].map((m) => {
-              const active = settings.water.reminder.intervalMin === m;
-              return (
-                <Pressable
-                  key={m}
-                  onPress={() => update({ water: { ...settings.water, reminder: { ...settings.water.reminder, intervalMin: m } } })}
-                  style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: active ? palette.primary : palette.card }}
-                >
-                  <Text style={{ color: active ? palette.bg : palette.text, fontSize: 12 }}>{m}m</Text>
-                </Pressable>
-              );
-            })}
+          <View>
+            <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>提醒時間（可多選）</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {WATER_TIME_PRESETS.map((t) => {
+                const times = settings.water.reminder.fixedTimes ?? [];
+                const active = times.includes(t);
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => {
+                      const next = active ? times.filter((x) => x !== t) : [...times, t];
+                      update({ water: { ...settings.water, reminder: { ...settings.water.reminder, type: 'fixed', fixedTimes: next } } });
+                    }}
+                    style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: active ? palette.primary : palette.card }}
+                  >
+                    <Text style={{ color: active ? palette.bg : palette.text, fontSize: 12 }}>{t}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         )}
       </Section>
@@ -200,7 +246,7 @@ export default function HealthSettings() {
         <RowSwitch
           label="每天固定提醒"
           value={settings.bowel.reminder.enabled}
-          onChange={(v: boolean) => update({ bowel: { reminder: { ...settings.bowel.reminder, enabled: v } } })}
+          onChange={(v: boolean) => enableReminder((on) => update({ bowel: { reminder: { ...settings.bowel.reminder, enabled: on } } }), v)}
         />
         {settings.bowel.reminder.enabled && (
           <Text style={{ color: palette.mute, fontSize: 12 }}>提醒時間：{settings.bowel.reminder.fixedTimes?.[0] ?? '20:00'}</Text>
@@ -256,7 +302,7 @@ export default function HealthSettings() {
         <RowSwitch
           label="睡前提醒"
           value={settings.sleep.reminder.enabled}
-          onChange={(v: boolean) => update({ sleep: { ...settings.sleep, reminder: { ...settings.sleep.reminder, enabled: v } } })}
+          onChange={(v: boolean) => enableReminder((on) => update({ sleep: { ...settings.sleep, reminder: { ...settings.sleep.reminder, enabled: on } } }), v)}
         />
         <View style={{ paddingVertical: 8 }}>
           <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>跨夜分日點</Text>

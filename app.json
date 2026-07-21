@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kibo 健身",
     "slug": "kibo",
-    "version": "1.0.7",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "kibo",
@@ -19,7 +19,9 @@
       "buildNumber": "13",
       "appleTeamId": "XGY266T6Y8",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.kibo.fitness"]
+        "com.apple.security.application-groups": [
+          "group.app.kibo.fitness"
+        ]
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -65,7 +67,8 @@
           "background": false
         }
       ],
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true

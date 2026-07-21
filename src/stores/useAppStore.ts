@@ -122,6 +122,8 @@ type State = {
 
 type Actions = {
   bootstrap: () => Promise<void>;
+  /** app 重啟後恢復未完成的訓練 session（見 lib/workout_session.ts） */
+  restoreWorkoutSession: () => Promise<void>;
   refreshUser: () => Promise<void>;
   refreshEgg: () => Promise<void>;
   refreshPets: () => Promise<void>;
@@ -418,6 +420,64 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     set({ user: fresh });
   },
 
+  /**
+   * 恢復未完成的訓練 session。
+   * DB 可推導的部分（workout / sets / startedAt）從 repo 讀；
+   * 只存在記憶體的部分（課表佇列 / 選取動作 / 計畫組）從 AsyncStorage 讀。
+   * 只恢復 SESSION_MAX_AGE_H 小時內的訓練——更久以前的視為已放棄，不打擾使用者。
+   */
+  restoreWorkoutSession: async () => {
+    const SESSION_MAX_AGE_H = 12;
+    try {
+      const { user, exercises, currentWorkoutId } = get();
+      if (!user || currentWorkoutId) return;   // 已有進行中的 session 就不覆蓋
+      const since = Date.now() - SESSION_MAX_AGE_H * 3600_000;
+      const w = await repo.getUnfinishedWorkout(user.id, since);
+      if (!w) return;
+
+      const sets = await repo.listSetsForWorkout(w.id);
+      const exById = new Map(exercises.map((e) => [e.id, e]));
+      const activeSets: ActiveSet[] = sets
+        .map((s, i) => {
+          const exercise = exById.get(s.exerciseId);
+          if (!exercise) return null;   // 動作已被刪除 → 該組無法還原
+          return {
+            id: s.id,
+            exercise,
+            orderIdx: s.orderIdx ?? i,
+            weight: s.weight ?? null,
+            reps: s.reps ?? null,
+            durationSec: s.durationSec ?? null,
+            distanceM: s.distanceM ?? null,
+            swimStroke: (s as any).swimStroke ?? null,
+            inclinePct: (s as any).inclinePct ?? null,
+            speedKmh: (s as any).speedKmh ?? null,
+            exp: s.exp ?? 0,
+            isPR: null,   // PR 標記不存 DB，恢復後不重算（只影響當下的獎勵動畫）
+          } as ActiveSet;
+        })
+        .filter(Boolean) as ActiveSet[];
+
+      const { loadSession } = await import('@/lib/workout_session');
+      const saved = await loadSession(w.id);
+      const queue = saved
+        ? (saved.routineExerciseIds.map((id) => exById.get(id)).filter(Boolean) as Exercise[])
+        : [];
+
+      set({
+        currentWorkoutId: w.id,
+        workoutStartedAt: w.startedAt instanceof Date ? w.startedAt.getTime() : Number(w.startedAt),
+        activeSets,
+        routineQueue: queue,
+        selectedExerciseId: saved?.selectedExerciseId ?? queue[0]?.id ?? null,
+        currentRoutineId: saved?.currentRoutineId ?? null,
+        plannedSetsByExercise: saved?.plannedSetsByExercise ?? {},
+      });
+    } catch (e) {
+      console.warn('[session] restore failed', e);
+    }
+  },
+
   startWorkout: async () => {
     const { user } = get();
     if (!user) throw new Error('no user');
@@ -490,7 +550,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     if (!currentWorkoutId || !user) return null;
     if (activeSets.length === 0) {
       await repo.cancelWorkout(currentWorkoutId);
-      set({ currentWorkoutId: null, activeSets: [], workoutStartedAt: null });
+      void import('@/lib/workout_session').then((m) => m.clearSession());
+      void import('@/lib/workout_session').then((m) => m.clearSession());
+    set({ currentWorkoutId: null, activeSets: [], workoutStartedAt: null });
       return null;
     }
 
@@ -668,8 +730,32 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     get().removePlannedSet(exerciseId, key);
   },
 
+  /**
+   * 取消勾選：把已完成的組退回「計畫組」並保留輸入值。
+   * 原本是直接 removeActiveSet（刪 DB 紀錄、整列消失）——但點打勾方塊的直覺是「取消勾選」，
+   * 誤觸就永久掉資料。真正要刪除請走列左滑（onDeleteDone → removeActiveSet）。
+   */
   uncommitSet: async (setId) => {
+    const s = get().activeSets.find((x) => x.id === setId);
     await get().removeActiveSet(setId);
+    if (!s) return;
+    const exId = s.exercise.id;
+    const current = get().plannedSetsByExercise[exId] ?? [];
+    const restored: PlannedSet = {
+      key: `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      weight: s.weight ?? null,
+      reps: s.reps ?? null,
+      durationSec: s.durationSec ?? null,
+      distanceM: s.distanceM ?? null,
+      swimStroke: s.swimStroke ?? null,
+      inclinePct: s.inclinePct ?? null,
+      speedKmh: s.speedKmh ?? null,
+    };
+    // 插在計畫組**最前面**：列表是 [...已完成, ...計畫]，放最前面 = 緊接在剩餘已完成組之後，
+    // 是不重構排序模型下最接近「原位」的位置（放最後會讓該組跳到整張表底部）。
+    set({
+      plannedSetsByExercise: { ...get().plannedSetsByExercise, [exId]: [restored, ...current] },
+    });
   },
 
   refreshExercises: async () => {
@@ -1628,3 +1714,27 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
     await get().refreshPets();
   },
 }));
+
+/**
+ * 訓練 session 自動持久化。
+ * 用 zustand subscribe 一處攔截所有變更，不必在十幾個 action 各自呼叫（漏一個就會不同步）。
+ * 只在有進行中訓練時寫入；debounce 避免每次輸入都打 AsyncStorage。
+ */
+let _sessionPersistTimer: ReturnType<typeof setTimeout> | null = null;
+useAppStore.subscribe((state) => {
+  if (!state.currentWorkoutId) return;
+  if (_sessionPersistTimer) clearTimeout(_sessionPersistTimer);
+  _sessionPersistTimer = setTimeout(() => {
+    const s = useAppStore.getState();
+    if (!s.currentWorkoutId) return;
+    void import('@/lib/workout_session').then((m) =>
+      m.saveSession({
+        workoutId: s.currentWorkoutId!,
+        routineExerciseIds: s.routineQueue.map((e) => e.id),
+        selectedExerciseId: s.selectedExerciseId,
+        currentRoutineId: s.currentRoutineId,
+        plannedSetsByExercise: s.plannedSetsByExercise,
+      }),
+    );
+  }, 400);
+});

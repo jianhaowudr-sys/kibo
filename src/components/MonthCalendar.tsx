@@ -103,11 +103,11 @@ export function MonthCalendar(props: Props) {
     return (
       <>
         <View className="flex-row items-center justify-between mb-3 px-2">
-          <Pressable onPress={() => { haptic.tapLight(); onChangeMonth(subMonths(month, 1)); }} className="p-2">
+          <Pressable accessibilityRole="button" accessibilityLabel="上一個月" onPress={() => { haptic.tapLight(); onChangeMonth(subMonths(month, 1)); }} className="p-2">
             <Text className="text-kibo-primary text-lg">‹</Text>
           </Pressable>
           <Text className="text-kibo-text font-bold">{format(month, 'yyyy 年 M 月')}</Text>
-          <Pressable onPress={() => { haptic.tapLight(); onChangeMonth(addMonths(month, 1)); }} className="p-2">
+          <Pressable accessibilityRole="button" accessibilityLabel="下一個月" onPress={() => { haptic.tapLight(); onChangeMonth(addMonths(month, 1)); }} className="p-2">
             <Text className="text-kibo-primary text-lg">›</Text>
           </Pressable>
         </View>
@@ -136,11 +136,11 @@ export function MonthCalendar(props: Props) {
     return (
       <>
         <View className="flex-row items-center justify-between mb-3 px-2">
-          <Pressable onPress={() => { haptic.tapLight(); onSelect(subWeeks(selectedDate, 1)); }} className="p-2">
+          <Pressable accessibilityRole="button" accessibilityLabel="上一週" onPress={() => { haptic.tapLight(); onSelect(subWeeks(selectedDate, 1)); }} className="p-2">
             <Text className="text-kibo-primary text-lg">‹</Text>
           </Pressable>
           <Text className="text-kibo-text font-bold">{format(start, 'M/d')} – {format(end, 'M/d')}</Text>
-          <Pressable onPress={() => { haptic.tapLight(); onSelect(addWeeks(selectedDate, 1)); }} className="p-2">
+          <Pressable accessibilityRole="button" accessibilityLabel="下一週" onPress={() => { haptic.tapLight(); onSelect(addWeeks(selectedDate, 1)); }} className="p-2">
             <Text className="text-kibo-primary text-lg">›</Text>
           </Pressable>
         </View>

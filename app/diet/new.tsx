@@ -11,9 +11,9 @@ import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { compressForVision } from '@/lib/image_compress';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
-import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import { useLowPower } from '@/hooks/useLowPower';
 import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
+import { KeyboardScreen } from '@/components/common/KeyboardScreen';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import { dateKey as toDateKey } from '@/lib/date';
 import { format } from 'date-fns';
@@ -574,8 +574,9 @@ export default function NewMeal() {
   };
 
   return (
+    <KeyboardScreen>
     <View className="flex-1 bg-kibo-bg">
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}>
+      <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
         <Text className="text-kibo-mute text-xs mb-2">餐別</Text>
         <View className="flex-row gap-2 mb-4">
           {MEAL_OPTIONS.map((m) => (
@@ -942,7 +943,7 @@ export default function NewMeal() {
       </ScrollView>
 
       <View
-        className="absolute bottom-0 left-0 right-0 bg-kibo-surface border-t border-kibo-card px-4 pt-3 flex-row gap-2"
+        className="bg-kibo-surface border-t border-kibo-card px-4 pt-3 flex-row gap-2"
         style={{ paddingBottom: Math.max(12, insets.bottom) }}
       >
         <Pressable onPress={() => router.back()} className="bg-kibo-card rounded-2xl py-4 px-6">
@@ -964,5 +965,6 @@ export default function NewMeal() {
         }}
       />
     </View>
+    </KeyboardScreen>
   );
 }

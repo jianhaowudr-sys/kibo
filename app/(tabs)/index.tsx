@@ -22,6 +22,7 @@ import { BodySummaryCard } from '@/components/dashboard/BodySummaryCard';
 import { NutritionSummaryCard } from '@/components/dashboard/NutritionSummaryCard';
 import { PetHeroBar } from '@/components/dashboard/PetHeroBar';
 import { MasterTutorialTip } from '@/components/common/MasterTutorialTip';
+import { PixelCard } from '@/components/common/PixelCard';
 import { parseLayout } from '@/lib/dashboard';
 import type { Workout, EggType } from '@/db/schema';
 
@@ -251,17 +252,17 @@ export default function HomeScreen() {
           </View>
 
           {dayWorkouts.length === 0 && isToday && (
-            <View className="bg-kibo-surface rounded-2xl p-6 border border-kibo-card items-center mb-3">
+            <PixelCard padding={24} style={{ alignItems: 'center', marginBottom: 12 }}>
               <Text className="text-5xl mb-2">💪</Text>
               <Text className="text-kibo-mute text-center">今天還沒訓練</Text>
               <Text className="text-kibo-mute text-xs text-center mt-1">動起來餵蛋吧</Text>
-            </View>
+            </PixelCard>
           )}
 
           {dayWorkouts.length === 0 && !isToday && (
-            <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card">
+            <PixelCard padding={16}>
               <Text className="text-kibo-mute text-xs text-center">這天沒有訓練紀錄</Text>
-            </View>
+            </PixelCard>
           )}
 
           {dayWorkouts.map((w) => (
