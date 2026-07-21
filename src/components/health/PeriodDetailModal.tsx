@@ -62,7 +62,7 @@ export function PeriodDetailModal({ visible, initial, onClose, onSave }: Props) 
         <View style={{ backgroundColor: palette.bg, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, maxHeight: '90%' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700', flex: 1 }}>經期詳填</Text>
-            <Pressable onPress={onClose} hitSlop={8}><Text style={{ color: palette.mute, fontSize: 22 }}>✕</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="關閉經期編輯" onPress={onClose} hitSlop={8}><Text style={{ color: palette.mute, fontSize: 22 }}>✕</Text></Pressable>
           </View>
 
           <ScrollView style={{ maxHeight: 480 }}>

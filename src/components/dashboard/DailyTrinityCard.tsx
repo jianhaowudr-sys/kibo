@@ -56,9 +56,10 @@ export function DailyTrinityCard() {
           marginBottom: 4,
         }}
       >
-        <Text style={{ fontSize: 24 }}>{filled ? '✓' : emoji}</Text>
+        {/* 圈是固定 56px：系統字體放到最大時不限制倍率會撐破/裁切 */}
+        <Text maxFontSizeMultiplier={1.3} style={{ fontSize: 24 }}>{filled ? '✓' : emoji}</Text>
       </View>
-      <Text style={{ color: filled ? palette.success : palette.mute, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.3} style={{ color: filled ? palette.success : palette.mute, fontSize: 11, fontWeight: '600' }}>{label}</Text>
     </View>
   );
 
