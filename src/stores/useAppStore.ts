@@ -689,8 +689,10 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       inclinePct: s.inclinePct ?? null,
       speedKmh: s.speedKmh ?? null,
     };
+    // 插在計畫組**最前面**：列表是 [...已完成, ...計畫]，放最前面 = 緊接在剩餘已完成組之後，
+    // 是不重構排序模型下最接近「原位」的位置（放最後會讓該組跳到整張表底部）。
     set({
-      plannedSetsByExercise: { ...get().plannedSetsByExercise, [exId]: [...current, restored] },
+      plannedSetsByExercise: { ...get().plannedSetsByExercise, [exId]: [restored, ...current] },
     });
   },
 

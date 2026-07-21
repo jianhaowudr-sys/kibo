@@ -89,6 +89,34 @@ async function writePreImportSnapshot(): Promise<void> {
   }
 }
 
+export type SnapshotInfo = { name: string; uri: string; takenAt: string };
+
+/** 列出匯入前自動快照（新到舊）。 */
+export async function listPreImportSnapshots(): Promise<SnapshotInfo[]> {
+  try {
+    const info = await FileSystem.getInfoAsync(BACKUP_DIR);
+    if (!info.exists) return [];
+    const files = (await FileSystem.readDirectoryAsync(BACKUP_DIR))
+      .filter((f) => f.startsWith('pre_import_'))
+      .sort()
+      .reverse();
+    return files.map((name) => ({
+      name,
+      uri: `${BACKUP_DIR}${name}`,
+      // 檔名格式 pre_import_2026-07-13T12-30-00.json
+      takenAt: name.replace('pre_import_', '').replace('.json', '').replace('T', ' ').replace(/-(\d{2})-(\d{2})$/, ':$1:$2'),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** 把某個匯入前快照還原回來（走與 importAll 相同的交易化流程）。 */
+export async function restoreFromSnapshot(uri: string): Promise<ImportResult> {
+  const content = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.UTF8 });
+  return applyBackup(JSON.parse(content) as BackupData);
+}
+
 export async function importAll(): Promise<ImportResult> {
   const picked = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
   if (picked.canceled || !picked.assets?.[0]) {
@@ -96,8 +124,11 @@ export async function importAll(): Promise<ImportResult> {
   }
 
   const content = await FileSystem.readAsStringAsync(picked.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
-  const data = JSON.parse(content) as BackupData;
+  return applyBackup(JSON.parse(content) as BackupData);
+}
 
+/** 匯入/還原共用核心：驗證 → safety-net 快照 → 交易化 DELETE+INSERT。 */
+async function applyBackup(data: BackupData): Promise<ImportResult> {
   // (1) 驗證在任何刪除發生前
   const v = validateBackupFile(data);
   if (!v.ok) throw new Error(v.reason ?? '備份檔無效');

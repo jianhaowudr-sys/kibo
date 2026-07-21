@@ -24,6 +24,62 @@ const PALM_LEN_VALUES = Array.from({ length: 29 }, (_, i) => 11 + i * 0.5);
 // 手掌寬度 6~12 cm 步進 0.5
 const PALM_WID_VALUES = Array.from({ length: 13 }, (_, i) => 6 + i * 0.5);
 
+/**
+ * ⚠️ 這三個元件必須定義在模組層。
+ * 原本定義在 HealthSettings 的 render body 內 → 每次 render 都是**新的元件型別**，
+ * React 會卸載並重新掛載整棵子樹，導致睡眠時間等 TextInput **每打一個字就失焦**。
+ */
+function Section({ title, open, onToggle, children }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
+      <Pressable onPress={onToggle} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+        <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }}>{title}</Text>
+        <Text style={{ color: palette.mute, fontSize: 18 }}>{open ? '−' : '＋'}</Text>
+      </Pressable>
+      {open && <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>{children}</View>}
+    </View>
+  );
+
+}
+
+function RowSwitch({ label, value, onChange }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+      <Text style={{ color: palette.text, flex: 1 }}>{label}</Text>
+      <Switch value={value} onValueChange={onChange} />
+    </View>
+  );
+
+}
+
+function PresetRow({ label, presets, value, onSelect }: any) {
+  const palette = useThemePalette();
+  return (
+    <View style={{ paddingVertical: 8 }}>
+      <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {presets.map((p: number) => {
+          const active = value === p;
+          return (
+            <Pressable
+              key={p}
+              onPress={() => { haptic.tapLight(); onSelect(p); }}
+              style={{
+                paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
+                backgroundColor: active ? palette.primary : palette.card,
+              }}
+            >
+              <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>{p}ml</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function HealthSettings() {
   const palette = useThemePalette();
   const settings = useAppStore((s) => s.healthSettings);
@@ -118,46 +174,6 @@ export default function HealthSettings() {
       setHealthSyncOn(false);
     }
   };
-
-  const Section = ({ title, open, onToggle, children }: any) => (
-    <View style={{ backgroundColor: palette.surface, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: palette.card }}>
-      <Pressable onPress={onToggle} style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
-        <Text style={{ color: palette.text, fontWeight: '700', flex: 1 }}>{title}</Text>
-        <Text style={{ color: palette.mute, fontSize: 18 }}>{open ? '−' : '＋'}</Text>
-      </Pressable>
-      {open && <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>{children}</View>}
-    </View>
-  );
-
-  const RowSwitch = ({ label, value, onChange }: any) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-      <Text style={{ color: palette.text, flex: 1 }}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} />
-    </View>
-  );
-
-  const PresetRow = ({ label, presets, value, onSelect }: any) => (
-    <View style={{ paddingVertical: 8 }}>
-      <Text style={{ color: palette.mute, fontSize: 12, marginBottom: 6 }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-        {presets.map((p: number) => {
-          const active = value === p;
-          return (
-            <Pressable
-              key={p}
-              onPress={() => { haptic.tapLight(); onSelect(p); }}
-              style={{
-                paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8,
-                backgroundColor: active ? palette.primary : palette.card,
-              }}
-            >
-              <Text style={{ color: active ? palette.bg : palette.text, fontWeight: '600', fontSize: 12 }}>{p}ml</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ padding: 16 }}>

@@ -18,7 +18,7 @@ import {
 } from '@/lib/ai_provider';
 import { clearMealMemory, getMemoryStats } from '@/lib/memory';
 import Constants from 'expo-constants';
-import { exportAll, importAll } from '@/lib/backup';
+import { exportAll, importAll, listPreImportSnapshots, restoreFromSnapshot } from '@/lib/backup';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { importStrongCSV } from '@/lib/csv_import';
 import { type ThemeMode, type ThemeStyle } from '@/lib/theme';
@@ -1427,6 +1427,42 @@ export default function MeScreen() {
                 className="bg-kibo-accent/20 border border-kibo-accent rounded-xl py-2.5 mb-2"
               >
                 <Text className="text-kibo-accent text-center font-semibold">📥 從備份檔匯入（JSON）</Text>
+              </Pressable>
+
+              {/* 匯入前會自動存一份快照；沒有入口的話等於白存（使用者拿不到 app 沙盒裡的檔案） */}
+              <Pressable
+                onPressIn={() => haptic.tapMedium()}
+                onPress={async () => {
+                  const snaps = await listPreImportSnapshots();
+                  if (snaps.length === 0) {
+                    Alert.alert('沒有可還原的快照', '系統會在你每次「匯入」之前自動存一份當下的資料快照，之後就能從這裡救回。');
+                    return;
+                  }
+                  Alert.alert(
+                    '還原匯入前的資料',
+                    '選一個時間點，把資料還原成「那次匯入之前」的狀態。目前的資料會被覆蓋（還原前一樣會先自動存一份快照）。',
+                    [
+                      ...snaps.map((s) => ({
+                        text: s.takenAt,
+                        onPress: async () => {
+                          try {
+                            const r = await restoreFromSnapshot(s.uri);
+                            await bootstrap();
+                            haptic.success();
+                            Alert.alert('✅ 已還原', `${r.tables} 張表、${r.rows} 筆紀錄`);
+                          } catch (e: any) {
+                            haptic.error();
+                            Alert.alert('還原失敗', e?.message ?? String(e));
+                          }
+                        },
+                      })),
+                      { text: '取消', style: 'cancel' as const },
+                    ],
+                  );
+                }}
+                className="bg-kibo-card border border-kibo-card rounded-xl py-2.5 mb-2"
+              >
+                <Text className="text-kibo-text text-center font-semibold">⏪ 還原匯入前的資料</Text>
               </Pressable>
 
               <Pressable
