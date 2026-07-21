@@ -122,6 +122,9 @@ begin
     'custom_foods','water_logs','bowel_logs','sleep_logs','period_days']
   loop
     execute format('alter table public.%I add column if not exists client_uuid text', t);
+    -- local_id 改 nullable：v1.1.x（cap=true）以 client_uuid 為寫入鍵、不再送 local_id，
+    -- 新列的 local_id 會是 NULL（unique 中多個 NULL 互不衝突）。舊版 client 一律會送值，不受影響。
+    execute format('alter table public.%I alter column local_id drop not null', t);
     -- 完整 unique（非 partial）：Postgres 多個 NULL 互不衝突，故不需 partial；
     -- 且 partial index 無法被 PostgREST 的 on_conflict 推論（會 42P10），未來 push 要用 client_uuid 當寫入鍵必須是完整 unique。
     execute format('drop index if exists public.%I', 'idx_' || t || '_client_uuid');

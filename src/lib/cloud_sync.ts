@@ -3,7 +3,7 @@ import { db, sqliteDb } from '@/db/client';
 import * as schema from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { listPendingDeletions, clearPendingDeletion } from '@/db/repo';
-import { planPull, planReconcile } from './sync_core';
+import { planPull, planReconcile, chunk } from './sync_core';
 import * as Crypto from 'expo-crypto';
 
 /** 本次同步累積的警告（原本被 catch {} 吞掉的錯誤改為浮出，可診斷）。 */
@@ -42,12 +42,21 @@ async function hasUuidCapability(): Promise<boolean> {
   if (_uuidCap !== null) return _uuidCap;
   try {
     const { error } = await supabase.from('workouts').select('client_uuid').limit(1);
-    _uuidCap = !error;
-  } catch {
-    _uuidCap = false;
+    if (!error) { _uuidCap = true; return true; }
+    const code = (error as any)?.code ?? '';
+    const missingColumn = code === '42703' || code === 'PGRST204' || /column .* does not exist/i.test(error.message ?? '');
+    if (missingColumn) {
+      // 明確「欄位不存在」才快取 false（005 未跑）
+      _uuidCap = false;
+      _warnings.push('雲端尚未套用 005 migration，本次走 legacy 同步路徑');
+      return false;
+    }
+    // 傳輸層錯誤（斷網/逾時）→ **不快取**，避免被釘死成 legacy 造成重複資料；本次直接中止同步。
+    throw error;
+  } catch (e) {
+    if (_uuidCap === false) return false;
+    throw e;
   }
-  if (!_uuidCap) _warnings.push('雲端尚未套用 005 migration，本次走 legacy 同步路徑');
-  return _uuidCap;
 }
 
 /** 本地某表 id → sync_uuid（sync_uuid 由 runAdditions 加欄，不在 drizzle schema，故用 raw SQL）。 */
@@ -68,9 +77,22 @@ async function localUuidSet(table: string): Promise<Set<string>> {
   return new Set(m.values());
 }
 
-/** 把 client_uuid 併進 push payload（僅在雲端支援時）。 */
+/**
+ * push payload 整形。
+ * cap=true：以 client_uuid 為寫入鍵，並**移除 local_id** —— 送了會在 adopt/orphan 之後違反
+ * unique(user_id, local_id)（uuid 搬到別的 local_id 上，兩把鍵永久錯位 → 該表 push 從此全失敗）。
+ * 005 已把 local_id 改 nullable；既有雲端列的 local_id 不會被更新（不在 payload 內），舊版 client 仍讀得到。
+ * cap=false 或無 uuid（理論上 backfill 保證有）→ 原樣送出，與 v1.0.7 完全相同。
+ */
 function withUuid<T extends Record<string, any>>(row: T, uuid: string | undefined, cap: boolean): T {
-  return cap && uuid ? ({ ...row, client_uuid: uuid } as T) : row;
+  if (!cap || !uuid) return row;
+  const { local_id, ...rest } = row as any;
+  return { ...rest, client_uuid: uuid } as T;
+}
+
+/** upsert 衝突目標：cap=true → client_uuid（005 建了完整 unique，非 partial，PostgREST 才能推論）。 */
+function conflictTarget(cap: boolean): string {
+  return cap ? 'user_id,client_uuid' : 'user_id,local_id';
 }
 
 // 已知會雲端同步的表 — 只 flush 這些，避免有人 enqueue 了 typo 字串就誤刪
@@ -84,7 +106,7 @@ const SYNCABLE_TABLES = new Set([
  * 把本地排隊的 (table, local_id) 真的去 Supabase delete 掉。
  * 成功 → clear 該 row；失敗（網路/RLS）→ 留著下次 fullSync 再試。
  */
-async function flushPendingDeletions(userId: string): Promise<void> {
+async function flushPendingDeletions(userId: string, cap: boolean): Promise<void> {
   const queue = await listPendingDeletions();
   for (const item of queue) {
     if (!SYNCABLE_TABLES.has(item.tableName)) {
@@ -92,11 +114,11 @@ async function flushPendingDeletions(userId: string): Promise<void> {
       continue;
     }
     try {
-      const { error } = await supabase
-        .from(item.tableName)
-        .delete()
-        .eq('user_id', userId)
-        .eq('local_id', item.localId);
+      // cap=true 且有 uuid → 以 client_uuid 刪（正確目標）；否則 fallback local_id（legacy）。
+      const q = supabase.from(item.tableName).delete().eq('user_id', userId);
+      const { error } = cap && item.syncUuid
+        ? await q.eq('client_uuid', item.syncUuid)
+        : await q.eq('local_id', item.localId);
       if (!error) {
         await clearPendingDeletion(item.id);
       }
@@ -215,7 +237,7 @@ async function pushCustomFoods(userId: string, cap: boolean) {
       use_count: f.useCount, last_used_at: toISO(f.lastUsedAt),
       created_at: toISO(f.createdAt), updated_at: new Date().toISOString(),
     }, uuids.get(f.id), cap));
-    const { error } = await supabase.from('custom_foods').upsert(payload, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('custom_foods').upsert(payload, { onConflict: conflictTarget(cap) });
     if (error) warn('pushCustomFoods', error);
   } catch (e) { warn('pushCustomFoods', e); }
 }
@@ -233,7 +255,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         batch_key: w.batchKey, created_at: toISO(w.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(w.id), cap));
-      const { error } = await supabase.from('water_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+      const { error } = await supabase.from('water_logs').upsert(payload, { onConflict: conflictTarget(cap) });
       if (error) warn('pushWaterLogs', error);
     }
   } catch (e) { warn('pushWaterLogs', e); }
@@ -248,7 +270,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         notes: b.notes, created_at: toISO(b.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(b.id), cap));
-      const { error } = await supabase.from('bowel_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+      const { error } = await supabase.from('bowel_logs').upsert(payload, { onConflict: conflictTarget(cap) });
       if (error) warn('pushBowelLogs', error);
     }
   } catch (e) { warn('pushBowelLogs', e); }
@@ -264,7 +286,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         assigned_day_key: (s as any).assignedDayKey ?? s.dayKey,
         created_at: toISO(s.createdAt), updated_at: new Date().toISOString(),
       }, uuids.get(s.id), cap));
-      const { error } = await supabase.from('sleep_logs').upsert(payload, { onConflict: 'user_id,local_id' });
+      const { error } = await supabase.from('sleep_logs').upsert(payload, { onConflict: conflictTarget(cap) });
       if (error) warn('pushSleepLogs', error);
     }
   } catch (e) { warn('pushSleepLogs', e); }
@@ -280,7 +302,7 @@ async function pushHealthTables(userId: string, cap: boolean) {
         created_at: toISO(p.createdAt),
         updated_at: new Date().toISOString(),
       }, uuids.get(p.id), cap));
-      const { error } = await supabase.from('period_days').upsert(payload, { onConflict: 'user_id,local_id' });
+      const { error } = await supabase.from('period_days').upsert(payload, { onConflict: conflictTarget(cap) });
       if (error) warn('pushPeriodDays', error);
     }
   } catch (e) { warn('pushPeriodDays', e); }
@@ -301,7 +323,7 @@ async function pushWorkouts(userId: string, cap: boolean) {
     duration_sec: w.durationSec,
     updated_at: new Date().toISOString(),
   }, uuids.get(w.id), cap));
-  const { error } = await supabase.from('workouts').upsert(payload, { onConflict: 'user_id,local_id' });
+  const { error } = await supabase.from('workouts').upsert(payload, { onConflict: conflictTarget(cap) });
   if (error) warn('pushWorkouts', error);
 }
 
@@ -339,7 +361,7 @@ async function pushWorkoutSets(userId: string, cap: boolean) {
   }));
   // Chunk by 500 to avoid request size limit
   for (let i = 0; i < payload.length; i += 500) {
-    const { error } = await supabase.from('workout_sets').upsert(payload.slice(i, i + 500), { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('workout_sets').upsert(payload.slice(i, i + 500), { onConflict: conflictTarget(cap) });
     if (error) { warn('pushWorkoutSets', error); break; }
   }
 }
@@ -365,7 +387,7 @@ async function pushMeals(userId: string, cap: boolean) {
     created_at: toISO(m.createdAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(m.id), cap));
-  const { error } = await supabase.from('meals').upsert(payload, { onConflict: 'user_id,local_id' });
+  const { error } = await supabase.from('meals').upsert(payload, { onConflict: conflictTarget(cap) });
   if (error) warn('pushMeals', error);
 }
 
@@ -393,7 +415,7 @@ async function pushBody(userId: string, cap: boolean) {
     created_at: toISO(b.createdAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(b.id), cap));
-  const { error } = await supabase.from('body_measurements').upsert(payload, { onConflict: 'user_id,local_id' });
+  const { error } = await supabase.from('body_measurements').upsert(payload, { onConflict: conflictTarget(cap) });
   if (error) warn('pushBody', error);
 }
 
@@ -413,7 +435,7 @@ async function pushRoutines(userId: string, cap: boolean) {
       created_at: toISO(r.createdAt),
       updated_at: new Date().toISOString(),
     }, routineUuids.get(r.id), cap));
-    const { error } = await supabase.from('routines').upsert(payload, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('routines').upsert(payload, { onConflict: conflictTarget(cap) });
     if (error) warn('pushRoutines', error);
   }
   const re = await db.select().from(schema.routineExercises);
@@ -437,7 +459,7 @@ async function pushRoutines(userId: string, cap: boolean) {
       }
       return withUuid(base, reUuids.get(x.id), cap);
     }));
-    const { error } = await supabase.from('routine_exercises').upsert(payload, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('routine_exercises').upsert(payload, { onConflict: conflictTarget(cap) });
     if (error) warn('pushRoutineExercises', error);
   }
 }
@@ -460,7 +482,7 @@ async function pushEggsPets(userId: string, cap: boolean) {
       created_at: toISO(e.createdAt),
       updated_at: new Date().toISOString(),
     }, eggUuids.get(e.id), cap));
-    const { error } = await supabase.from('eggs').upsert(payload, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('eggs').upsert(payload, { onConflict: conflictTarget(cap) });
     if (error) warn('pushEggs', error);
   }
   const pets = await db.select().from(schema.pets);
@@ -480,7 +502,7 @@ async function pushEggsPets(userId: string, cap: boolean) {
       created_at: toISO(p.createdAt),
       updated_at: new Date().toISOString(),
     }, petUuids.get(p.id), cap));
-    const { error } = await supabase.from('pets').upsert(payload, { onConflict: 'user_id,local_id' });
+    const { error } = await supabase.from('pets').upsert(payload, { onConflict: conflictTarget(cap) });
     if (error) warn('pushPets', error);
   }
 }
@@ -498,7 +520,7 @@ async function pushAchievements(userId: string, cap: boolean) {
     unlocked_at: toISO(a.unlockedAt),
     updated_at: new Date().toISOString(),
   }, uuids.get(a.id), cap));
-  const { error } = await supabase.from('achievements').upsert(payload, { onConflict: 'user_id,local_id' });
+  const { error } = await supabase.from('achievements').upsert(payload, { onConflict: conflictTarget(cap) });
   if (error) warn('pushAchievements', error);
 }
 
@@ -559,8 +581,29 @@ async function adoptUuids(table: string, adopts: { cloudUuid: string; localSyncU
   }
 }
 
-/** 讀本地列並正規化（供 planPull 比對）。 */
+/**
+ * 讀本地列並正規化（供 planPull/planReconcile 比對）。
+ * ⚠️ 子表必須 join 父表補上父 client_uuid：naturalKeyOf 的第一段讀 workout_client_uuid /
+ * routine_client_uuid，本地原生欄只有 workout_id / routine_id，不 enrich 的話 key 首段恆為空
+ * → 與雲端永不相符（P0-B），造成 reconcile 全數 orphan、pull adopt 從不觸發。
+ */
 async function localNormalized(table: string, cols: string): Promise<any[]> {
+  if (table === 'workout_sets') {
+    const rows = await sqliteDb.getAllAsync<any>(
+      `SELECT s.id AS local_id, s.sync_uuid, s.created_at, s.order_idx,
+              w.sync_uuid AS workout_client_uuid
+         FROM workout_sets s LEFT JOIN workouts w ON w.id = s.workout_id`,
+    );
+    return rows.map((r) => normalizeKeyFields(table, r));
+  }
+  if (table === 'routine_exercises') {
+    const rows = await sqliteDb.getAllAsync<any>(
+      `SELECT e.id AS local_id, e.sync_uuid, e.order_idx,
+              r.sync_uuid AS routine_client_uuid
+         FROM routine_exercises e LEFT JOIN routines r ON r.id = e.routine_id`,
+    );
+    return rows.map((r) => normalizeKeyFields(table, r));
+  }
   const rows = await sqliteDb.getAllAsync<any>(`SELECT id as local_id, sync_uuid, ${cols} FROM "${table}"`);
   return rows.map((r) => normalizeKeyFields(table, r));
 }
@@ -602,8 +645,9 @@ async function pullWorkouts(userId: string, cap: boolean): Promise<Map<string, n
     // **不指定 id**（修 P0-3：舊版強制 id=local_id 造成重裝撞號）→ autoincrement 發新號
     const ins = await db.insert(schema.workouts).values(insertVals(w) as any).returning({ id: schema.workouts.id });
     const newId = ins[0]?.id;
-    if (newId && w.client_uuid) {
-      await sqliteDb.runAsync('UPDATE workouts SET sync_uuid = ? WHERE id = ?', [w.client_uuid, newId]);
+    if (newId) {
+      // 雲端無 uuid 時本地自生，避免 sync_uuid 留 NULL → 下次同步又被判為「不存在」重複插入
+      await sqliteDb.runAsync('UPDATE workouts SET sync_uuid = ? WHERE id = ?', [w.client_uuid ?? Crypto.randomUUID(), newId]);
     }
   }
   // 建立 uuid → 本地 id 對照（含既有列），供 workout_sets 重映父 FK
@@ -641,10 +685,12 @@ async function pullWorkoutSets(userId: string, cap: boolean, parentMap: Map<stri
     await localNormalized('workout_sets', 'created_at, order_idx, workout_id'),
   );
   await adoptUuids('workout_sets', plan.toAdopt);
+  let skippedNoParent = 0;
   for (const s of plan.toInsert) {
-    // 父 FK 用 workout_client_uuid 重映到本地新 id；對不到（父不在雲端/未 pull）就跳過，避免掛錯父
+    // 父 FK 用 workout_client_uuid 重映到本地新 id；對不到（父不在雲端/未 pull）就跳過，避免掛錯父。
+    // reconcile 已回填 legacy 列的 workout_client_uuid，故這裡應為真正的殘餘孤兒。
     const localWorkoutId = s.workout_client_uuid ? parentMap.get(s.workout_client_uuid) : undefined;
-    if (!localWorkoutId) { _warnings.push('workout_sets 有列因父 workout 對不到而略過'); continue; }
+    if (!localWorkoutId) { skippedNoParent++; continue; }
     const exId = await findOrCreateExercise(s.exercise_name, s.exercise_unit);
     const ins = await db.insert(schema.workoutSets).values({
       workoutId: localWorkoutId, exerciseId: exId,
@@ -654,9 +700,14 @@ async function pullWorkoutSets(userId: string, cap: boolean, parentMap: Map<stri
       completed: s.completed, exp: s.exp, createdAt: new Date(s.created_at),
     } as any).returning({ id: schema.workoutSets.id });
     const newId = ins[0]?.id;
-    if (newId && s.client_uuid) {
-      await sqliteDb.runAsync('UPDATE workout_sets SET sync_uuid = ? WHERE id = ?', [s.client_uuid, newId]);
+    // 雲端無 uuid（reconcile 中斷等）時本地自生一個，避免 sync_uuid 永遠 NULL → 每次同步重複插入
+    if (newId) {
+      await sqliteDb.runAsync('UPDATE workout_sets SET sync_uuid = ? WHERE id = ?',
+        [s.client_uuid ?? Crypto.randomUUID(), newId]);
     }
+  }
+  if (skippedNoParent > 0) {
+    _warnings.push(`workout_sets: ${skippedNoParent} 筆因父 workout 對不到而略過`);
   }
 }
 
@@ -701,8 +752,8 @@ async function pullMeals(userId: string, cap: boolean) {
   for (const m of plan.toInsert) {
     const ins = await db.insert(schema.meals).values(vals(m) as any).returning({ id: schema.meals.id });
     const newId = ins[0]?.id;
-    if (newId && m.client_uuid) {
-      await sqliteDb.runAsync('UPDATE meals SET sync_uuid = ? WHERE id = ?', [m.client_uuid, newId]);
+    if (newId) {
+      await sqliteDb.runAsync('UPDATE meals SET sync_uuid = ? WHERE id = ?', [m.client_uuid ?? Crypto.randomUUID(), newId]);
     }
   }
 }
@@ -751,8 +802,8 @@ async function pullBody(userId: string, cap: boolean) {
   for (const b of plan.toInsert) {
     const ins = await db.insert(schema.bodyMeasurements).values(vals(b) as any).returning({ id: schema.bodyMeasurements.id });
     const newId = ins[0]?.id;
-    if (newId && b.client_uuid) {
-      await sqliteDb.runAsync('UPDATE body_measurements SET sync_uuid = ? WHERE id = ?', [b.client_uuid, newId]);
+    if (newId) {
+      await sqliteDb.runAsync('UPDATE body_measurements SET sync_uuid = ? WHERE id = ?', [b.client_uuid ?? Crypto.randomUUID(), newId]);
     }
   }
 }
@@ -787,16 +838,37 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
     if (cloudRows.length === 0) return;
     const localRows = await localNormalized(table, localCols);
     const { claims, orphans } = planReconcile(table, cloudRows, localRows);
-    for (const c of claims) {
-      const r = await supabase.from(table).update({ client_uuid: c.syncUuid })
-        .eq('user_id', userId).eq('local_id', c.cloudLocalId);
-      if (r.error) warn(`reconcile claim(${table})`, r.error);
+
+    // 子表：同時回填父 client_uuid。legacy 雲端列的 workout_client_uuid 為 NULL，不回填的話
+    // pull 會因 `對不到父 → continue` 把每一筆都略過 → workout 還原後零組 set（P0-C）。
+    let parentUuidByLocalId: Map<number, string> | null = null;
+    if (table === 'workout_sets') {
+      const { data: pw } = await supabase.from('workouts').select('local_id, client_uuid').eq('user_id', userId);
+      parentUuidByLocalId = new Map(
+        (pw ?? []).filter((r: any) => r.client_uuid != null && r.local_id != null).map((r: any) => [r.local_id, r.client_uuid]),
+      );
     }
-    for (const o of orphans) {
-      if (o.local_id === undefined) continue;
-      const r = await supabase.from(table).update({ client_uuid: Crypto.randomUUID() })
-        .eq('user_id', userId).eq('local_id', o.local_id);
-      if (r.error) warn(`reconcile orphan(${table})`, r.error);
+
+    // 逐列發 HTTP 對重度使用者會逾時（P2-A）→ 改批次 upsert（衝突鍵用 legacy local_id，
+    // reconcile 只在仍有 legacy 列時才有事做，此時 006 必然尚未執行）。
+    const claimByLocalId = new Map(claims.map((c) => [c.cloudLocalId, c.syncUuid]));
+    const patches: any[] = [];
+    for (const cr of cloudRows) {
+      if (cr.local_id === undefined || cr.local_id === null) continue;
+      const patch: any = {
+        user_id: userId,
+        local_id: cr.local_id,
+        client_uuid: claimByLocalId.get(cr.local_id) ?? Crypto.randomUUID(),
+      };
+      if (parentUuidByLocalId && cr.workout_local_id != null) {
+        const pu = parentUuidByLocalId.get(cr.workout_local_id);
+        if (pu) patch.workout_client_uuid = pu;
+      }
+      patches.push(patch);
+    }
+    for (const batch of chunk(patches, 500)) {
+      const r = await supabase.from(table).upsert(batch, { onConflict: 'user_id,local_id' });
+      if (r.error) { warn(`reconcile(${table})`, r.error); break; }
     }
     if (orphans.length > 0) {
       _warnings.push(`${table}: ${orphans.length} 筆雲端舊資料將還原到本地(reconcile orphan)`);
@@ -804,7 +876,25 @@ async function reconcileLegacyCloud(userId: string, table: string, localCols: st
   } catch (e) { warn(`reconcile(${table})`, e); }
 }
 
+/**
+ * 併發互斥：debounce 只擋計時器，使用者手動同步與背景同步仍可能重疊。
+ * 兩個 fullSync 各自算 localUuidSet 都認為某雲端列不存在 → 各插一次 → 重複列。
+ * （legacy 路徑因顯式 id 會撞 PK 而報錯；改 autoincrement 後兩次都成功 = 靜默重複，故必須互斥。）
+ * 重入時直接回傳同一個 promise，順帶避免 _warnings 互相污染。
+ */
+let _inFlight: Promise<SyncStats> | null = null;
+
 export async function fullSync(userId: string): Promise<SyncStats> {
+  if (_inFlight) return _inFlight;
+  _inFlight = runFullSync(userId);
+  try {
+    return await _inFlight;
+  } finally {
+    _inFlight = null;
+  }
+}
+
+async function runFullSync(userId: string): Promise<SyncStats> {
   if (!isSupabaseConfigured()) throw new Error('Supabase 未設定');
 
   _warnings = [];
@@ -844,7 +934,7 @@ export async function fullSync(userId: string): Promise<SyncStats> {
 
   // 在 push 之後、pull 之前 flush 所有「本地已刪、雲端還在」的 tombstone
   // 否則接下來的 pull 會把這些已刪資料重新塞回本地
-  await flushPendingDeletions(userId);
+  await flushPendingDeletions(userId, cap);
 
   stats.pushedWorkouts = Number(w0[0]?.c ?? 0);
   stats.pushedSets = Number(s0[0]?.c ?? 0);

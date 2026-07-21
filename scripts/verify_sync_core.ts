@@ -78,6 +78,57 @@ ok(naturalKeyOf('unknown_tbl', {}) === null, '未知表 → null');
   ok(r.toAdopt.length === 1 && r.toAdopt[0].cloudUuid === 'cloudUuid' && r.toAdopt[0].localSyncUuid === 'regeneratedLocal', 'adopt：過繼 uuid');
 }
 
+// ---- 子表 natural key（P0-B 盲點：先前只測父表，沒抓到本地列缺父 uuid）----
+// 本地列若只有 workout_id（未 enrich 父 uuid）→ key 首段為空，與雲端永不相符
+{
+  const cloudSet = { client_uuid: 'S1', workout_client_uuid: 'W-uuid', order_idx: 0, created_at: 100 };
+  const localRaw = { local_id: 1, sync_uuid: 'L1', workout_id: 5, order_idx: 0, created_at: 100 };
+  ok(naturalKeyOf('workout_sets', cloudSet) !== naturalKeyOf('workout_sets', localRaw),
+    '未 enrich 父 uuid 的本地列 → key 與雲端不符（此即 P0-B）');
+}
+// 呼叫端 enrich 後（join 父表補 workout_client_uuid）→ key 相符
+{
+  const cloudSet = { client_uuid: 'S1', workout_client_uuid: 'W-uuid', order_idx: 0, created_at: 100 };
+  const localEnriched = { local_id: 1, sync_uuid: 'L1', workout_client_uuid: 'W-uuid', order_idx: 0, created_at: 100 };
+  ok(naturalKeyOf('workout_sets', cloudSet) === naturalKeyOf('workout_sets', localEnriched),
+    'enrich 後子表 key 相符');
+  // 且 planPull 應 adopt（不重複插入）
+  const r = planPull('workout_sets', [cloudSet], new Set(['L1']), [localEnriched]);
+  ok(r.toInsert.length === 0 && r.toAdopt.length === 1, '子表 enrich 後可正確 adopt');
+}
+// routine_exercises 同型
+{
+  const cloud = { client_uuid: 'R1', routine_client_uuid: 'RT', order_idx: 2 };
+  const local = { local_id: 3, sync_uuid: 'L3', routine_client_uuid: 'RT', order_idx: 2 };
+  ok(naturalKeyOf('routine_exercises', cloud) === naturalKeyOf('routine_exercises', local),
+    'routine_exercises enrich 後 key 相符');
+}
+
+// ---- P1-A：雲端 client_uuid 為 null 但 natural key 已存在 → 跳過，不得重複插入 ----
+{
+  const cloud = [{ client_uuid: null, started_at: 555 }];
+  const local = [{ local_id: 1, sync_uuid: 'L', started_at: 555 }];
+  const r = planPull('workouts', cloud, new Set(['L']), local);
+  ok(r.toInsert.length === 0 && r.toAdopt.length === 0, 'null uuid + natKey 命中 → 跳過(防無限重複)');
+}
+// null uuid 且 natural key 不存在 → 仍插入
+{
+  const r = planPull('workouts', [{ client_uuid: null, started_at: 999 }], new Set(), []);
+  ok(r.toInsert.length === 1, 'null uuid + 無對應 → 插入');
+}
+
+// ---- P1-C：同 natural key 兩筆雲端列 → 第二筆不得靜默消失 ----
+{
+  const cloud = [
+    { client_uuid: 'C1', started_at: 777 },
+    { client_uuid: 'C2', started_at: 777 },
+  ];
+  const local = [{ local_id: 1, sync_uuid: 'L1', started_at: 777 }];
+  const r = planPull('workouts', cloud, new Set(['L1']), local);
+  ok(r.toAdopt.length === 1 && r.toAdopt[0].cloudUuid === 'C1', '第一筆 adopt');
+  ok(r.toInsert.length === 1 && r.toInsert[0].client_uuid === 'C2', '第二筆改為 insert，不靜默消失');
+}
+
 // ---- chunk ----
 ok(JSON.stringify(chunk([1, 2, 3, 4, 5], 2)) === JSON.stringify([[1, 2], [3, 4], [5]]), 'chunk 2');
 ok(chunk([], 500).length === 0, 'chunk 空 → []');

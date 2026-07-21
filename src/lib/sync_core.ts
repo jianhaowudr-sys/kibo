@@ -90,8 +90,15 @@ export function planPull(
     if (uuid && localSyncUuids.has(uuid)) continue;
     const natKey = naturalKeyOf(table, cr);
     const localUuid = natKey ? byNat.get(natKey) : undefined;
-    if (uuid && localUuid) toAdopt.push({ cloudUuid: uuid, localSyncUuid: localUuid });
-    else toInsert.push(cr);
+    if (localUuid) {
+      // 該本地列已被這筆雲端列佔用 → 移出候選，避免同 natural key 的第二筆雲端列
+      // 又 adopt 到同一列（UPDATE 會 0 rows、靜默消失）。
+      byNat.delete(natKey!);
+      // uuid 為 null（reconcile 未跑或中斷）但 natural key 已存在 → 本地已有這筆，跳過防重。
+      if (uuid) toAdopt.push({ cloudUuid: uuid, localSyncUuid: localUuid });
+      continue;
+    }
+    toInsert.push(cr);
   }
   return { toInsert, toAdopt };
 }

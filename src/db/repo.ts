@@ -10,20 +10,32 @@ import { savePhotoToDocs, deletePhotoFile } from '@/lib/photo_storage';
 type Row = Record<string, any>;
 
 // 雲端同步：把要從 Supabase 刪除的 (table, local_id) 排隊，由 cloud_sync.flushPendingDeletions 真正打 DELETE
-export type PendingDeletion = { id: number; tableName: string; localId: number };
+export type PendingDeletion = { id: number; tableName: string; localId: number; syncUuid: string | null };
 
 export async function enqueueRemoteDelete(tableName: string, localId: number): Promise<void> {
+  // 刪除前先讀該列的 sync_uuid：雲端以 client_uuid 為鍵，pull 會發新的本地 id，
+  // 只靠 local_id 刪會刪到雲端不相干的另一筆（且目標資料下次 pull 又復活）。
+  let syncUuid: string | null = null;
+  try {
+    const r = await sqliteDb.getFirstAsync<{ sync_uuid: string | null }>(
+      `SELECT sync_uuid FROM "${tableName}" WHERE id = ?`,
+      [localId],
+    );
+    syncUuid = r?.sync_uuid ?? null;
+  } catch {
+    // 該表無 sync_uuid 欄（不在同步範圍）→ 維持 local_id fallback
+  }
   await sqliteDb.runAsync(
-    `INSERT OR IGNORE INTO pending_deletions (table_name, local_id, enqueued_at) VALUES (?, ?, ?)`,
-    [tableName, localId, Date.now()],
+    `INSERT OR IGNORE INTO pending_deletions (table_name, local_id, sync_uuid, enqueued_at) VALUES (?, ?, ?, ?)`,
+    [tableName, localId, syncUuid, Date.now()],
   );
 }
 
 export async function listPendingDeletions(): Promise<PendingDeletion[]> {
   const rs = await sqliteDb.getAllAsync<Row>(
-    `SELECT id, table_name as tableName, local_id as localId FROM pending_deletions ORDER BY id ASC`,
+    `SELECT id, table_name as tableName, local_id as localId, sync_uuid as syncUuid FROM pending_deletions ORDER BY id ASC`,
   );
-  return rs.map((r) => ({ id: r.id, tableName: r.tableName, localId: r.localId }));
+  return rs.map((r) => ({ id: r.id, tableName: r.tableName, localId: r.localId, syncUuid: r.syncUuid ?? null }));
 }
 
 export async function clearPendingDeletion(id: number): Promise<void> {
