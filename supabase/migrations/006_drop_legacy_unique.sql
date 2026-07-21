@@ -6,9 +6,17 @@
 --   3. 已確認 v1.1.0 的 UUID 同步在真機/測試專案運作正常。
 --
 -- 作用：drop 14 表的 unique(user_id, local_id)，讓 client_uuid 成為唯一同步鍵。
--- 副作用：跑完後未升級到 v1.1.0 的舊版 client push 會失敗（本地資料無損）——這是接受的代價，
---         故務必等舊版占比夠低。跑了不可逆。
--- 在 Supabase SQL Editor 執行。
+--
+-- ⚠️⚠️ 目前**絕對不可執行** ⚠️⚠️
+-- 深審發現：app 端所有 upsert 的 onConflict 仍是 'user_id,local_id'。一旦 drop 掉該約束，
+-- Postgres 會因找不到可推論的唯一約束而回 42P10 → **連 v1.1.0 自己的 push 也全部失敗**，
+-- 不只是舊版 client。原本 header 宣稱「只有舊版會失敗」是錯的。
+-- 先決條件（全部滿足才可執行）：
+--   1. app 端 cap=true 路徑的 6 個 P0 已修（見 cloud_sync.ts 的 KILL SWITCH 註解）。
+--   2. push 已改用 onConflict: 'user_id,client_uuid'（需 005 的完整 unique index）。
+--   3. 已在測試 Supabase 專案完整演練 005 → app → 006。
+--   4. 商店版本分佈顯示舊版占比夠低（建議 <10%）。
+-- 跑了不可逆。在 Supabase SQL Editor 執行。
 
 do $$
 declare

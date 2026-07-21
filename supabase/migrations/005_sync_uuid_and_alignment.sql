@@ -122,7 +122,10 @@ begin
     'custom_foods','water_logs','bowel_logs','sleep_logs','period_days']
   loop
     execute format('alter table public.%I add column if not exists client_uuid text', t);
-    execute format('create unique index if not exists %I on public.%I(user_id, client_uuid) where client_uuid is not null', 'idx_' || t || '_client_uuid', t);
+    -- 完整 unique（非 partial）：Postgres 多個 NULL 互不衝突，故不需 partial；
+    -- 且 partial index 無法被 PostgREST 的 on_conflict 推論（會 42P10），未來 push 要用 client_uuid 當寫入鍵必須是完整 unique。
+    execute format('drop index if exists public.%I', 'idx_' || t || '_client_uuid');
+    execute format('create unique index if not exists %I on public.%I(user_id, client_uuid)', 'uq_' || t || '_client_uuid', t);
   end loop;
 end$$;
 

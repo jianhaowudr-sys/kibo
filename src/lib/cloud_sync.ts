@@ -20,8 +20,25 @@ function warn(where: string, e: any) {
  * 已跑 → 走 sync_uuid 路徑（修 P0-3 重裝/多裝置覆蓋）。
  * 讓「先出 app」或「先跑 migration」兩種次序都安全。
  */
+/**
+ * ⚠️ KILL SWITCH：UUID 同步路徑目前**停用**。
+ * 深審(2026-07-13)在 cap=true 路徑找到 6 個 P0：
+ *  A) reconcile 配的 orphan uuid 被隨後的 push(onConflict: user_id,local_id)整列覆蓋 → 重裝時雲端舊資料被銷毀
+ *  B) workout_sets natural key 本地給 workout_id、雲端要 workout_client_uuid → 永遠不符
+ *  C) legacy workout_sets 的 workout_client_uuid 為 NULL → pull 全略過 → workout 還原後零組 set
+ *  D) adopt 後下一次 push 違反 unique(user_id,client_uuid) → 該表 push 從此永久失敗
+ *  E) 006 一跑,v1.1.0 自己的 push 也會 42P10 全掛(onConflict 仍是 local_id;且 005 的 partial index
+ *     無法被 PostgREST 推論)
+ *  F) 刪除鏈仍用 local_id → pull 發新號後會刪錯雲端別筆資料
+ * 根因:識別鍵(client_uuid)與寫入鍵(onConflict local_id)不一致,需連同 005 index 形狀一起重新設計。
+ * 修好並在測試 Supabase 專案演練通過前,不得對真實使用者啟用。
+ * false 時即使雲端已跑 005 也一律走 legacy 路徑(與 v1.0.7 行為完全相同)。
+ */
+const ENABLE_UUID_SYNC = false;
+
 let _uuidCap: boolean | null = null;
 async function hasUuidCapability(): Promise<boolean> {
+  if (!ENABLE_UUID_SYNC) return false;
   if (_uuidCap !== null) return _uuidCap;
   try {
     const { error } = await supabase.from('workouts').select('client_uuid').limit(1);
