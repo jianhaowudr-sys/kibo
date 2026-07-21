@@ -56,7 +56,15 @@ export default function HealthSettings() {
   // 開啟提醒前先確保通知權限；未授權則不開啟並引導去設定（修 iOS 靜默不送達）。
   const enableReminder = async (apply: (on: boolean) => void, v: boolean) => {
     if (!v) { apply(false); return; }
-    const perm = await ensurePermission();
+    let perm: 'granted' | 'denied' | 'blocked';
+    try {
+      perm = await ensurePermission();
+    } catch (e) {
+      // 沒有 try/catch 的話會變成 unhandled rejection 且使用者完全沒有回饋
+      console.warn('[reminders] ensurePermission failed', e);
+      Alert.alert('無法開啟提醒', '取得通知權限時發生問題，請稍後再試。');
+      return;
+    }
     if (perm === 'granted') { apply(true); return; }
     if (perm === 'blocked') {
       Alert.alert('通知未開啟', '請到「設定」開啟 Kibo 的通知後再試一次。', [

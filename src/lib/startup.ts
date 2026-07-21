@@ -56,8 +56,13 @@ export function runBackgroundStartup(): void {
     // 每次啟動重排通知：讓喝水 interval→固定每日時間的遷移實際生效（migration 只改記憶體，
     // 需 rescheduleAll 才會把新 DAILY 觸發排進系統；否則舊 DATE 觸發過期後就再也不響）。
     try {
-      const { rescheduleAll } = await import('@/lib/reminders');
-      await rescheduleAll(useAppStore.getState().healthSettings);
+      // 必須先確認 user 已載入：bootstrap 在 !user 時會提早返回而不碰 healthSettings，
+      // 此時拿到的是「全部關閉」的預設值 → rescheduleAll 會先 cancelAll 再什麼都不排，
+      // 等於把使用者所有提醒清光。
+      if (useAppStore.getState().user) {
+        const { rescheduleAll } = await import('@/lib/reminders');
+        await rescheduleAll(useAppStore.getState().healthSettings);
+      }
     } catch (e) {
       console.warn('[startup] 通知重排失敗', e);
     }

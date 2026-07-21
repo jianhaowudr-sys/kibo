@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ViewProps } from 'react-native';
+import { View, StyleSheet, ViewProps } from 'react-native';
 import { PixelBorder } from './PixelBorder';
 import { useThemeStyle } from '@/hooks/useThemeStyle';
 
@@ -41,6 +41,13 @@ export function PixelCard({
     accent: palette.accent,
     card: palette.card,
   };
+  // style 必須拆兩半：外框(margin/alignSelf 等版面屬性)給 PixelBorder，
+  // 內容對齊(alignItems/justifyContent/gap)給內層 padding View。
+  // 全部丟給 PixelBorder 的話，alignItems 會作用在「陰影 + 邊框本體」的外層容器上 →
+  // 邊框本體縮成內容寬，但絕對定位的陰影仍是滿版，視覺上錯位。
+  const flat = StyleSheet.flatten(style) ?? {};
+  const { alignItems, justifyContent, gap, rowGap, columnGap, ...outerStyle } = flat as any;
+  const innerStyle = { alignItems, justifyContent, gap, rowGap, columnGap };
   return (
     <PixelBorder
       borderColor={palette.text}
@@ -48,10 +55,10 @@ export function PixelCard({
       borderWidth={3}
       shadowOffset={4}
       radius={0}
-      style={style}
+      style={outerStyle}
       {...rest}
     >
-      <View style={{ padding }}>{children}</View>
+      <View style={[{ padding }, innerStyle]}>{children}</View>
     </PixelBorder>
   );
 }

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Text, Platform } from 'react-native';
+import { Text, Platform, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeStyle } from '@/hooks/useThemeStyle';
 
@@ -21,7 +21,9 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: palette.surface,
           borderTopColor: isPixel ? palette.text : palette.card,
-          borderTopWidth: isPixel ? 3 : undefined,   // 像素風：chunky 上框
+          // 不可用 undefined：tabBarStyle 是 style 陣列最後一個，flattenStyle 會無條件覆寫，
+          // undefined 會把 @react-navigation 預設的 hairline 邊框整個抹掉（modern 模式變沒有上框）。
+          borderTopWidth: isPixel ? 3 : StyleSheet.hairlineWidth,
           paddingTop: 8,
           paddingBottom: insets.bottom || 8,
           height: tabBarHeight,

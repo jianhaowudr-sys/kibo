@@ -104,9 +104,12 @@ export function parseHealthSettings(raw: string | null): HealthSettings {
       period: { ...DEFAULT_HEALTH_SETTINGS.period, ...(obj.period ?? {}) },
       body: { ...DEFAULT_HEALTH_SETTINGS.body, ...(obj.body ?? {}) },
     };
-    // 遷移：舊喝水提醒為 interval 模型（無 fixedTimes）→ 轉成固定每日時間
+    // 遷移：舊喝水提醒為 interval 模型 → 轉成固定每日時間。
+    // 只在「真的是舊 config」時觸發：type 仍是 interval，或 fixedTimes 從未存在。
+    // 不可用 `fixedTimes.length === 0` 當條件——使用者可以刻意把時間全部取消勾選，
+    // 那樣下次啟動會被當成 legacy 而把預設 4 個時間塞回來、並排程他明確移除的通知。
     const wr = merged.water.reminder;
-    if (wr && (!wr.fixedTimes || wr.fixedTimes.length === 0)) {
+    if (wr && (wr.type === 'interval' || wr.fixedTimes === undefined)) {
       const derived = dailyReminderTimes(wr).map(formatHhmm);
       merged.water.reminder = {
         ...wr,

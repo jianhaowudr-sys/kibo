@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { vars } from 'nativewind';
 
 const KEY = '@kibo/theme_mode';
 const STYLE_KEY = '@kibo/theme_style';
@@ -64,35 +63,5 @@ export const THEME_COLORS = {
 
 export type ResolvedTheme = 'light' | 'dark';
 
-export const THEME_VARS = {
-  light: vars({
-    '--kibo-bg': '243 245 250',
-    '--kibo-surface': '255 255 255',
-    '--kibo-card': '214 223 242',
-    '--kibo-primary': '0 88 190',
-    '--kibo-accent': '130 81 0',
-    '--kibo-success': '0 108 73',
-    '--kibo-danger': '186 26 26',
-    '--kibo-warning': '180 83 9',
-    '--kibo-text': '21 28 39',
-    '--kibo-mute': '66 71 84',
-    '--kibo-strength': '249 115 22',
-    '--kibo-cardio': '6 182 212',
-    '--kibo-flex': '168 85 247',
-  }),
-  dark: vars({
-    '--kibo-bg': '11 19 38',
-    '--kibo-surface': '23 31 51',
-    '--kibo-card': '45 52 73',
-    '--kibo-primary': '173 198 255',
-    '--kibo-accent': '255 178 183',
-    '--kibo-success': '78 222 163',
-    '--kibo-danger': '255 180 171',
-    '--kibo-warning': '251 191 36',
-    '--kibo-text': '218 226 253',
-    '--kibo-mute': '194 198 214',
-    '--kibo-strength': '249 115 22',
-    '--kibo-cardio': '6 182 212',
-    '--kibo-flex': '168 85 247',
-  }),
-};
+// 註：CSS 變數的唯一真相是 global.css（NativeWind 從那裡讀）。
+// 原本這裡有一份 THEME_VARS 但全專案零引用——加 token 時改到它會完全沒效果（已移除避免再踩）。

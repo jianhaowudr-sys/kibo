@@ -11,7 +11,6 @@ import { hasActiveProviderKey } from '@/lib/ai_provider';
 import { compressForVision } from '@/lib/image_compress';
 import { recordMealCorrection } from '@/lib/memory';
 import * as haptic from '@/lib/haptic';
-import { BOTTOM_BAR_PADDING } from '@/lib/layout';
 import { useLowPower } from '@/hooks/useLowPower';
 import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
 import { KeyboardScreen } from '@/components/common/KeyboardScreen';

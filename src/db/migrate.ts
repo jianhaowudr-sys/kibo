@@ -485,30 +485,6 @@ async function runAdditions(): Promise<void> {
     await sqliteDb.runAsync('ALTER TABLE pending_deletions ADD COLUMN sync_uuid TEXT');
   }
 
-  // ---- FK orphan sweep（一次性）----
-  // FK 一直是 OFF（expo-sqlite 預設），schema 宣告的 cascade 從未真正執行，靠 repo 手寫串刪；
-  // 漏寫處會留下孤兒列。啟用 PRAGMA foreign_keys=ON 之前必須先清乾淨，否則這些列一被寫入就報錯。
-  // 用 users.fk_sweep_at 當 sentinel，只跑一次。
-  if (!(await hasColumn('users', 'fk_sweep_at'))) {
-    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN fk_sweep_at INTEGER');
-  }
-  const sweptRow = await sqliteDb.getFirstAsync<{ c: number }>(
-    'SELECT COUNT(*) as c FROM users WHERE fk_sweep_at IS NOT NULL',
-  );
-  if (!sweptRow || sweptRow.c === 0) {
-    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
-      // 父不存在的子列 → 刪（notNull FK，無法置 null）
-      await txn.runAsync('DELETE FROM workout_sets WHERE workout_id NOT IN (SELECT id FROM workouts)');
-      await txn.runAsync('DELETE FROM workout_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)');
-      await txn.runAsync('DELETE FROM routine_exercises WHERE routine_id NOT IN (SELECT id FROM routines)');
-      await txn.runAsync('DELETE FROM routine_exercises WHERE exercise_id NOT IN (SELECT id FROM exercises)');
-      // 可為 null 的懸空 FK → 置 null（保留該列本身）
-      await txn.runAsync('UPDATE pets SET egg_id = NULL WHERE egg_id IS NOT NULL AND egg_id NOT IN (SELECT id FROM eggs)');
-      await txn.runAsync('UPDATE pet_messages SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
-      await txn.runAsync('UPDATE eggs SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
-      await txn.runAsync('UPDATE users SET fk_sweep_at = ?', [Date.now()]);
-    });
-  }
 }
 
 async function seedV2IfNeeded(): Promise<void> {
@@ -541,6 +517,34 @@ async function seedV2IfNeeded(): Promise<void> {
       }
     }
   });
+}
+
+/**
+ * FK orphan sweep（一次性）。
+ * FK 一直是 OFF（expo-sqlite 預設），schema 宣告的 cascade 從未執行、靠 repo 手寫串刪，漏寫處會留孤兒列。
+ * 啟用 PRAGMA foreign_keys=ON 前必須先清乾淨。
+ *
+ * ⚠️ 必須在 **seed 與 user 建立之後** 才跑：
+ *  - `NOT IN (SELECT id FROM exercises)` 在 exercises 尚未 seed 時是「NOT IN 空集合」= 恆真 → 會刪光整張表。
+ *  - sentinel 不能依賴 users 列（首次安裝時 user 還不存在，UPDATE 影響 0 列 → 永遠不 latch）。
+ * 故改用 PRAGMA user_version 當 sentinel，與資料列無關。
+ */
+const FK_SWEEP_VERSION = 1;
+async function fkOrphanSweepOnce(): Promise<void> {
+  const row = await sqliteDb.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  if ((row?.user_version ?? 0) >= FK_SWEEP_VERSION) return;
+  await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+    // 父不存在的子列 → 刪（notNull FK，無法置 null）
+    await txn.runAsync('DELETE FROM workout_sets WHERE workout_id NOT IN (SELECT id FROM workouts)');
+    await txn.runAsync('DELETE FROM workout_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+    await txn.runAsync('DELETE FROM routine_exercises WHERE routine_id NOT IN (SELECT id FROM routines)');
+    await txn.runAsync('DELETE FROM routine_exercises WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+    // 可為 null 的懸空 FK → 置 null（保留該列本身）
+    await txn.runAsync('UPDATE pets SET egg_id = NULL WHERE egg_id IS NOT NULL AND egg_id NOT IN (SELECT id FROM eggs)');
+    await txn.runAsync('UPDATE pet_messages SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+    await txn.runAsync('UPDATE eggs SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+  });
+  await sqliteDb.execAsync(`PRAGMA user_version = ${FK_SWEEP_VERSION}`);
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -582,6 +586,9 @@ export async function ensureSchema(): Promise<void> {
       );
     });
   }
+
+  // 必須最後跑：需要 exercises 已 seed（否則 NOT IN 空集合會刪光）且 user 已存在
+  await fkOrphanSweepOnce();
 }
 
 export async function resetDatabase(): Promise<void> {

@@ -71,24 +71,31 @@ export async function rescheduleAll(settings: HealthSettings) {
   try {
     await ensureCategories();
     await Notifications.cancelAllScheduledNotificationsAsync();
-
-    if (settings.water.reminder.enabled) {
-      await scheduleWater(settings.water.reminder);
-    }
-    if (settings.bowel.reminder.enabled) {
+  } catch (e) {
+    console.warn('rescheduleAll: cancel failed', e);
+    return; // 沒取消成功就排程會產生重複，直接放棄本輪
+  }
+  // per-step try：任一種提醒排程失敗，不得讓其餘兩種也一起沒有
+  // （全部已先 cancel，一個 throw 會讓使用者變成零提醒且只有一行 console.warn）
+  if (settings.water.reminder.enabled) {
+    try { await scheduleWater(settings.water.reminder); }
+    catch (e) { console.warn('rescheduleAll: water failed', e); }
+  }
+  if (settings.bowel.reminder.enabled) {
+    try {
       await scheduleFixedReminder(
         { title: '💩 排便提醒', body: '今天有上嗎？' },
         settings.bowel.reminder.fixedTimes,
       );
-    }
-    if (settings.sleep.reminder.enabled) {
+    } catch (e) { console.warn('rescheduleAll: bowel failed', e); }
+  }
+  if (settings.sleep.reminder.enabled) {
+    try {
       await scheduleFixedReminder(
         { title: '😴 該睡覺了', body: '準備休息，明天才有精神' },
         settings.sleep.reminder.fixedTimes,
       );
-    }
-  } catch (e) {
-    console.warn('rescheduleAll failed', e);
+    } catch (e) { console.warn('rescheduleAll: sleep failed', e); }
   }
 }
 

@@ -16,6 +16,7 @@ export function KeyboardScreen({
 }) {
   return (
     <KeyboardAvoidingView
+      className="bg-kibo-bg"
       style={[{ flex: 1 }, style]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={offset}

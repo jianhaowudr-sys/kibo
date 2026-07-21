@@ -685,9 +685,9 @@ export const useAppStore = create<State & Actions>()((set, get) => ({
       reps: s.reps ?? null,
       durationSec: s.durationSec ?? null,
       distanceM: s.distanceM ?? null,
-      swimStroke: (s as any).swimStroke ?? null,
-      inclinePct: (s as any).inclinePct ?? null,
-      speedKmh: (s as any).speedKmh ?? null,
+      swimStroke: s.swimStroke ?? null,
+      inclinePct: s.inclinePct ?? null,
+      speedKmh: s.speedKmh ?? null,
     };
     set({
       plannedSetsByExercise: { ...get().plannedSetsByExercise, [exId]: [...current, restored] },
