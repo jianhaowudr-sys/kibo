@@ -484,6 +484,31 @@ async function runAdditions(): Promise<void> {
   if (!(await hasColumn('pending_deletions', 'sync_uuid'))) {
     await sqliteDb.runAsync('ALTER TABLE pending_deletions ADD COLUMN sync_uuid TEXT');
   }
+
+  // ---- FK orphan sweep（一次性）----
+  // FK 一直是 OFF（expo-sqlite 預設），schema 宣告的 cascade 從未真正執行，靠 repo 手寫串刪；
+  // 漏寫處會留下孤兒列。啟用 PRAGMA foreign_keys=ON 之前必須先清乾淨，否則這些列一被寫入就報錯。
+  // 用 users.fk_sweep_at 當 sentinel，只跑一次。
+  if (!(await hasColumn('users', 'fk_sweep_at'))) {
+    await sqliteDb.runAsync('ALTER TABLE users ADD COLUMN fk_sweep_at INTEGER');
+  }
+  const sweptRow = await sqliteDb.getFirstAsync<{ c: number }>(
+    'SELECT COUNT(*) as c FROM users WHERE fk_sweep_at IS NOT NULL',
+  );
+  if (!sweptRow || sweptRow.c === 0) {
+    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+      // 父不存在的子列 → 刪（notNull FK，無法置 null）
+      await txn.runAsync('DELETE FROM workout_sets WHERE workout_id NOT IN (SELECT id FROM workouts)');
+      await txn.runAsync('DELETE FROM workout_sets WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+      await txn.runAsync('DELETE FROM routine_exercises WHERE routine_id NOT IN (SELECT id FROM routines)');
+      await txn.runAsync('DELETE FROM routine_exercises WHERE exercise_id NOT IN (SELECT id FROM exercises)');
+      // 可為 null 的懸空 FK → 置 null（保留該列本身）
+      await txn.runAsync('UPDATE pets SET egg_id = NULL WHERE egg_id IS NOT NULL AND egg_id NOT IN (SELECT id FROM eggs)');
+      await txn.runAsync('UPDATE pet_messages SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+      await txn.runAsync('UPDATE eggs SET pet_id = NULL WHERE pet_id IS NOT NULL AND pet_id NOT IN (SELECT id FROM pets)');
+      await txn.runAsync('UPDATE users SET fk_sweep_at = ?', [Date.now()]);
+    });
+  }
 }
 
 async function seedV2IfNeeded(): Promise<void> {
@@ -492,30 +517,30 @@ async function seedV2IfNeeded(): Promise<void> {
   );
   if (r && r.count > 0) return;
 
-  for (const base of V2_EXERCISES) {
-    const equipments = base.equipments.length > 0 ? base.equipments : ['其他' as const];
-    for (const eq of equipments) {
-      const suffix = eq === '徒手' ? '（自重）' : `（${eq}）`;
-      const displayName = equipments.length > 1 || eq !== '徒手'
-        ? `${base.name}${equipments.length > 1 ? suffix : ''}`
-        : base.name;
-      const finalName = equipments.length === 1 ? base.name : `${base.name}${suffix}`;
-      await sqliteDb.runAsync(
-        `INSERT INTO exercises (name, category, muscle_group, part, equipment, unit, icon, exp_per_unit, is_custom, seed_version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 2)`,
-        [
-          finalName,
-          base.category,
-          base.muscleGroup,
-          base.part,
-          eq,
-          base.unit,
-          base.part,
-          base.expPerUnit ?? 1,
-        ],
-      );
+  // V2 動作庫是大量插入（數百筆）→ 包交易：原子性 + 首次啟動明顯加速
+  await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+    for (const base of V2_EXERCISES) {
+      const equipments = base.equipments.length > 0 ? base.equipments : ['其他' as const];
+      for (const eq of equipments) {
+        const suffix = eq === '徒手' ? '（自重）' : `（${eq}）`;
+        const finalName = equipments.length === 1 ? base.name : `${base.name}${suffix}`;
+        await txn.runAsync(
+          `INSERT INTO exercises (name, category, muscle_group, part, equipment, unit, icon, exp_per_unit, is_custom, seed_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 2)`,
+          [
+            finalName,
+            base.category,
+            base.muscleGroup,
+            base.part,
+            eq,
+            base.unit,
+            base.part,
+            base.expPerUnit ?? 1,
+          ],
+        );
+      }
     }
-  }
+  });
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -527,29 +552,35 @@ export async function ensureSchema(): Promise<void> {
     'SELECT COUNT(*) as count FROM exercises',
   );
 
+  // 種子插入包在交易：中途 crash 不會留下「一半動作庫」的半完成狀態，
+  // 且 SQLite 批次寫入快得多（首次啟動明顯有感）。
   if (!existing || existing.count === 0) {
-    for (const ex of DEFAULT_EXERCISES) {
-      await sqliteDb.runAsync(
-        'INSERT INTO exercises (name, category, muscle_group, unit, icon, exp_per_unit, is_custom) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [ex.name!, ex.category!, ex.muscleGroup!, ex.unit!, ex.icon ?? '🏋️', ex.expPerUnit ?? 1, 0],
-      );
-    }
+    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+      for (const ex of DEFAULT_EXERCISES) {
+        await txn.runAsync(
+          'INSERT INTO exercises (name, category, muscle_group, unit, icon, exp_per_unit, is_custom) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [ex.name!, ex.category!, ex.muscleGroup!, ex.unit!, ex.icon ?? '🏋️', ex.expPerUnit ?? 1, 0],
+        );
+      }
+    });
   }
 
   const user = await sqliteDb.getFirstAsync<{ count: number }>(
     'SELECT COUNT(*) as count FROM users',
   );
 
+  // user + 初始蛋必須同進同出：只建了 user 沒建蛋會讓首頁蛋卡永久空白
   if (!user || user.count === 0) {
-    await sqliteDb.runAsync(
-      'INSERT INTO users (name, goal, created_at) VALUES (?, ?, ?)',
-      ['健身新手', 'fit', Date.now()],
-    );
-
-    await sqliteDb.runAsync(
-      'INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      [1, 'strength', 0, 500, 0, Date.now()],
-    );
+    await sqliteDb.withExclusiveTransactionAsync(async (txn) => {
+      await txn.runAsync(
+        'INSERT INTO users (name, goal, created_at) VALUES (?, ?, ?)',
+        ['健身新手', 'fit', Date.now()],
+      );
+      await txn.runAsync(
+        'INSERT INTO eggs (user_id, type, current_exp, required_exp, stage, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [1, 'strength', 0, 500, 0, Date.now()],
+      );
+    });
   }
 }
 
