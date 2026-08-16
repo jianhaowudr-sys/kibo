@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, Pressable, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, BackHandler } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert, Modal, TextInput, BackHandler } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -263,7 +264,7 @@ export default function ActiveWorkout() {
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       className="bg-kibo-bg"
     >
     <View className="flex-1 bg-kibo-bg">
@@ -272,7 +273,6 @@ export default function ActiveWorkout() {
         contentContainerStyle={{ padding: 16, paddingBottom: BOTTOM_BAR_PADDING }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
       >
         <View className="bg-kibo-surface rounded-2xl p-4 border border-kibo-card mb-4 flex-row justify-between items-center">
           <View>

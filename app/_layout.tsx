@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, Text, ActivityIndicator, useColorScheme as useSystemColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
@@ -102,6 +103,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={[{ flex: 1 }, pixelVarsStyle]}>
+      <KeyboardProvider>
       <SafeAreaProvider>
         <StatusBar style={palette.statusBar} />
         <Stack
@@ -152,6 +154,7 @@ export default function RootLayout() {
         <UndoToast />
         <SurpriseBoxBridge />
       </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
