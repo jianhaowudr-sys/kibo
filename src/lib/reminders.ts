@@ -7,6 +7,7 @@
 import * as Notifications from 'expo-notifications';
 import type { HealthSettings, ReminderConfig } from './health_settings';
 import { dailyReminderTimes, parseHhmm } from './reminders_core';
+import { REMINDER_CHANNEL_ID } from './notifications_setup';
 
 const CATEGORY_WATER = 'water-quick';
 
@@ -50,7 +51,10 @@ async function scheduleWater(config: ReminderConfig) {
         categoryIdentifier: CATEGORY_WATER,
         data: { type: 'water' },
       },
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY, hour, minute,
+        channelId: REMINDER_CHANNEL_ID,  // Android：走 HIGH importance channel，否則不彈 heads-up
+      },
     });
   }
 }
@@ -62,7 +66,10 @@ async function scheduleFixedReminder(content: { title: string; body: string }, f
     if (!hm) continue;
     await Notifications.scheduleNotificationAsync({
       content,
-      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hm.hour, minute: hm.minute },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: hm.hour, minute: hm.minute,
+        channelId: REMINDER_CHANNEL_ID,
+      },
     });
   }
 }
