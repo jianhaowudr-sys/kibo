@@ -2,6 +2,7 @@ import { View, Text, Pressable, TextInput, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useState, useCallback, useMemo } from 'react';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
@@ -25,6 +26,7 @@ export default function NewRoutine() {
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('💪');
   const [note, setNote] = useState('');
+  useUnsavedGuard(name.trim() !== '' || note.trim() !== '' || tempIds.length > 0);
 
   useFocusEffect(
     useCallback(() => {

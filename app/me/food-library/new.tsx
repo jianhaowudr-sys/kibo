@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 import { View, Text, Pressable, TextInput, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -29,6 +30,7 @@ export default function NewCustomFood() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  useUnsavedGuard(name.trim() !== '' || calories !== '' || protein !== '' || carb !== '' || fat !== '' || !!photoUri);
 
   const pickPhoto = async () => {
     haptic.tapLight();

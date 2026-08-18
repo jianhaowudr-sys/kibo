@@ -2,6 +2,7 @@ import { View, Text, ScrollView, Pressable, TextInput, Alert, Image, ActivityInd
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { useAppStore } from '@/stores/useAppStore';
@@ -53,6 +54,10 @@ export default function NewBodyMeasurement() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
+
+  // measuredAt 有預設日期,不算「使用者輸入」;其餘欄位任一非空或有照片 = 有未存內容
+  const hasUnsaved = !!photoUri || Object.entries(form).some(([k, v]) => k !== 'measuredAt' && v !== '');
+  useUnsavedGuard(hasUnsaved);
 
   const pick = async (source: 'camera' | 'library') => {
     haptic.tapLight();

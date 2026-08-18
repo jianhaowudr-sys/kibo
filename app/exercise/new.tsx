@@ -1,6 +1,7 @@
 import { View, Text, ScrollView, Pressable, TextInput, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useState, useMemo } from 'react';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 import { useAppStore } from '@/stores/useAppStore';
 import { useThemePalette } from '@/lib/useThemePalette';
 import { BODY_PARTS, EQUIPMENTS, UNIT_LABELS } from '@/data/exercises_v2';
@@ -26,6 +27,7 @@ export default function NewExercise() {
   const [showPart, setShowPart] = useState(false);
   const [showEquip, setShowEquip] = useState(false);
   const [showUnit, setShowUnit] = useState(false);
+  useUnsavedGuard(tab === 'new' && name.trim() !== '');
 
   const customExercises = useMemo(
     () => exercises.filter((e) => e.isCustom).sort((a, b) => b.id - a.id),

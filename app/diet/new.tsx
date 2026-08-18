@@ -14,6 +14,7 @@ import * as haptic from '@/lib/haptic';
 import { useLowPower } from '@/hooks/useLowPower';
 import { FoodPickerModal } from '@/components/diet/FoodPickerModal';
 import { KeyboardScreen } from '@/components/common/KeyboardScreen';
+import { useUnsavedGuard } from '@/hooks/useUnsavedGuard';
 import { WheelPicker } from '@/components/common/WheelPicker';
 import { dateKey as toDateKey } from '@/lib/date';
 import { format } from 'date-fns';
@@ -161,6 +162,12 @@ export default function NewMeal() {
   const [fat, setFat] = useState('');
   const [note, setNote] = useState('');
   const [photos, setPhotos] = useState<PhotoSlot[]>([]);
+
+  // 有照片/品項/標題/任一營養/備註 = 有未存內容(Android 硬體返回會靜默丟失,故守門)
+  useUnsavedGuard(
+    photos.length > 0 || items.length > 0 || title.trim() !== '' ||
+    calories !== '' || protein !== '' || carb !== '' || fat !== '' || note.trim() !== '',
+  );
   const [ocrLoading, setOcrLoading] = useState(false);
   const [aiParsed, setAiParsed] = useState(false);
   const [aiOriginalItems, setAiOriginalItems] = useState<MealItem[] | null>(null);
