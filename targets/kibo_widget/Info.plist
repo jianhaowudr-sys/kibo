@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>kibo_widget</string>
+  <string>kibowidget</string>
   <key>CFBundleDisplayName</key>
   <string>Kibo 今日</string>
   <key>CFBundleIdentifier</key>
